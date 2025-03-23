@@ -1,0 +1,14 @@
+{
+    "domain": "settleup",
+    "name": "SettleUp",
+    "codeowners": [
+      "@PineappleEmperor"
+    ],
+    "config_flow": true,
+    "dependencies": [],
+    "documentation": "https://github.com/PineappleEmperor/settleup-ha/blob/main/README.md",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/PineappleEmperor/settleup-ha/issues",
+    "requirements": [],
+    "version": "1.0.0"
+  }
