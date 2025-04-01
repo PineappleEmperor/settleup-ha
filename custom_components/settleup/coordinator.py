@@ -20,7 +20,7 @@ from .const import DEFAULT_SCAN_INTERVAL
 _LOGGER = logging.getLogger(__name__)
 
 
-class ExampleCoordinator(DataUpdateCoordinator):
+class SettleUpUpdateCoordinator(DataUpdateCoordinator):
     """My example coordinator."""
 
     data: list[dict[str, Any]]
