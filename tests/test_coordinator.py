@@ -8,7 +8,7 @@ from datetime import datetime
 from custom_components.settleup.coordinator import SettleUpUpdateCoordinator
 
 from homeassistant.setup import async_setup_component
-from custom_components.parcelapp.const import DOMAIN
+from custom_components.settleup.const import DOMAIN
 
 
 async def test_async_setup(hass):
