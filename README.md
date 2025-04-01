@@ -1,3 +1,6 @@
+[![Python package](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/python_validate.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/python_validate.yml) [![Validate with hassfest](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hassfest_validate.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hassfest_validate.yml) [![HACS Action](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hacs_validate.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hacs_validate.yml)
+[![Release](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/semantic_release.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/semantic_release.yml)
+
 SettleUp Integration (SU) for Home Assistant
 =====================================
 
