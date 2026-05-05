@@ -1,147 +1,199 @@
-"""Global services file.
+"""Services for the SettleUp integration."""
+from __future__ import annotations
 
-This needs to be viewed with the services.yaml file
-to demonstrate the different setup for using these services in the UI
-
-IMPORTANT NOTES:
-To ensure your service runs on the event loop, either make service function async
-or decorate with @callback.  However, ensure that your function is non blocking or,
-if it is, run in the executor.
-Both examples are shown here.  Running services on different threads can cause issues.
-
-https://developers.home-assistant.io/docs/dev_101_services/
-"""
+import logging
+import time
+from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_DEVICE_ID, ATTR_NAME
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
-import homeassistant.helpers.device_registry as dr
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 
-from .const import DOMAIN, RENAME_DEVICE_SERVICE_NAME, RESPONSE_SERVICE_NAME
-from .coordinator import ExampleCoordinator
+from .const import DOMAIN
+from .coordinator import SettleUpCoordinator
 
-ATTR_TEXT = "text"
+_LOGGER = logging.getLogger(__name__)
 
-# Services schemas
-RENAME_DEVICE_SERVICE_SCHEMA = vol.Schema(
+SERVICE_ADD_TRANSACTION = "add_transaction"
+SERVICE_SETTLE_DEBT     = "settle_debt"
+
+ADD_TRANSACTION_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_DEVICE_ID): int,
-        vol.Required(ATTR_NAME): str,
+        vol.Required("group"):                           cv.string,
+        vol.Required("purpose"):                         cv.string,
+        vol.Required("amount"):                          vol.Coerce(float),
+        vol.Optional("currency_code"):                   vol.All(cv.string, vol.Length(min=3, max=3)),
+        vol.Required("paid_by"):                         cv.entity_id,
+        vol.Required("for_members"):                     vol.All(cv.ensure_list, [cv.entity_id]),
+        vol.Optional("weights"):                         vol.All(cv.ensure_list, [vol.Coerce(float)]),
+        vol.Optional("member_amounts"):                  vol.All(cv.ensure_list, [vol.Coerce(float)]),
+        vol.Optional("category", default="general"):     cv.string,
     }
 )
 
-RESPONSE_SERVICE_SCHEMA = vol.Schema(
+SETTLE_DEBT_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_DEVICE_ID): int,
+        vol.Required("group"):                           cv.string,
+        vol.Required("from_member"):                     cv.entity_id,
+        vol.Required("to_member"):                       cv.entity_id,
+        vol.Required("amount"):                          vol.Coerce(float),
+        vol.Optional("currency_code"):                   vol.All(cv.string, vol.Length(min=3, max=3)),
     }
 )
 
+# ---------------------------------------------------------------------------
 
-class ExampleServicesSetup:
-    """Class to handle Integration Services."""
+def _get_coordinator(hass: HomeAssistant) -> SettleUpCoordinator:
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        return entry.runtime_data
+    raise HomeAssistantError("No SettleUp integration loaded")
 
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-        """Initialise services."""
-        self.hass = hass
-        self.config_entry = config_entry
-        self.coordinator: ExampleCoordinator = config_entry.runtime_data.coordinator
 
-        self.setup_services()
+def _group_id_from_device(hass: HomeAssistant, device_id: str) -> str:
+    """Resolve an HA device ID → Firebase group_id via device identifiers."""
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None:
+        raise HomeAssistantError(f"Device {device_id!r} not found")
+    for domain, identifier in device.identifiers:
+        if domain == DOMAIN:
+            return identifier
+    raise HomeAssistantError(f"Device {device_id!r} is not a SettleUp group")
 
-    def setup_services(self):
-        """Initialise the services in Hass."""
-        # ----------------------------------------------------------------------------
-        # A simple definition of a service with 2 parameters, as denoted by the
-        # RENAME_DEVICE_SERVICE_SCHEMA
-        # ----------------------------------------------------------------------------
-        self.hass.services.async_register(
-            DOMAIN,
-            RENAME_DEVICE_SERVICE_NAME,
-            self.rename_device,
-            schema=RENAME_DEVICE_SERVICE_SCHEMA,
-        )
 
-        # ----------------------------------------------------------------------------
-        # The definition here for a response service is the same as before but you
-        # must include supports_response = only/optional
-        # https://developers.home-assistant.io/docs/dev_101_services/#supporting-response-data
-        # ----------------------------------------------------------------------------
-        self.hass.services.async_register(
-            DOMAIN,
-            RESPONSE_SERVICE_NAME,
-            self.async_response_service,
-            schema=RESPONSE_SERVICE_SCHEMA,
-            supports_response=SupportsResponse.ONLY,
-        )
+def _member_id_from_entity(hass: HomeAssistant, entity_id: str, group_id: str) -> str:
+    """Resolve a member sensor entity_id → Firebase member_id."""
+    registry = er.async_get(hass)
+    entry    = registry.async_get(entity_id)
+    if not entry or not entry.unique_id:
+        raise HomeAssistantError(f"Unknown entity: {entity_id}")
+    uid    = entry.unique_id
+    prefix = f"{DOMAIN}_{group_id}_"
+    suffix = "_balance"
+    if uid.startswith(prefix) and uid.endswith(suffix):
+        return uid[len(prefix):-len(suffix)]
+    raise HomeAssistantError(f"{entity_id} is not a SettleUp member sensor for group {group_id}")
 
-    async def rename_device(self, service_call: ServiceCall) -> None:
-        """Execute rename device service call function.
 
-        This will send a command to the api which will rename the
-        device and then update the device registry to match.
+def _group_currency(coordinator: SettleUpCoordinator, group_id: str) -> str:
+    """Return the group's configured currency, falling back to GBP."""
+    if coordinator.data:
+        for group in coordinator.data:
+            if group.group_id == group_id:
+                return group.converted_to_currency
+    return "GBP"
 
-        Data from the service call will be in service_call.data
-        as seen below.
-        """
-        device_id = service_call.data[ATTR_DEVICE_ID]
-        device_name = service_call.data[ATTR_NAME]
+# ---------------------------------------------------------------------------
 
-        # check for valid device id
-        try:
-            assert self.coordinator.get_device(device_id) is not None
-        except AssertionError as ex:
-            raise HomeAssistantError(
-                "Error calling service: The device ID does not exist"
-            ) from ex
-        else:
-            result = await self.hass.async_add_executor_job(
-                self.coordinator.api.set_data, device_id, "device_name", device_name
-            )
+def async_setup_services(hass: HomeAssistant) -> None:
+    """Register SettleUp services."""
 
-            if result:
-                # ----------------------------------------------------------------------------
-                # In this scenario, we would need to update the device registry name here
-                # as it will not automatically update.
-                # ----------------------------------------------------------------------------
+    async def handle_add_transaction(call: ServiceCall) -> None:
+        """Add an expense transaction to a SettleUp group."""
+        coordinator    = _get_coordinator(hass)
+        group_id       = _group_id_from_device(hass, call.data["group"])
+        paid_by_id     = _member_id_from_entity(hass, call.data["paid_by"], group_id)
+        for_ids        = [
+            _member_id_from_entity(hass, eid, group_id)
+            for eid in call.data["for_members"]
+        ]
+        amount         = call.data["amount"]
+        weights        = call.data.get("weights")
+        member_amounts = call.data.get("member_amounts")
+        currency       = call.data.get("currency_code") or _group_currency(coordinator, group_id)
 
-                # Get our device from coordinator data to retrieve its devie_uid as that is
-                # what we used in the devices identifiers.
-                device = self.coordinator.get_device(device_id)
+        if weights and member_amounts:
+            raise HomeAssistantError("Specify either weights or member_amounts, not both")
 
-                # Get the device registry
-                device_registry = dr.async_get(self.hass)
-
-                # Get the device entry in the registry by its identifiers.  This is the same as
-                # we used to set them in base.py
-                device_entry = device_registry.async_get_device(
-                    [(DOMAIN, device["device_uid"])]
+        if weights:
+            if len(weights) != len(for_ids):
+                raise HomeAssistantError(
+                    f"weights has {len(weights)} values but for_members has {len(for_ids)}"
                 )
+            items: list[dict[str, Any]] = [
+                {
+                    "amount"  : str(amount),
+                    "forWhom" : [
+                        {"memberId": mid, "weight": str(w)}
+                        for mid, w in zip(for_ids, weights, strict=True)
+                    ],
+                }
+            ]
 
-                # Update our device entry with the new name.  You will see this change in the UI
-                device_registry.async_update_device(device_entry.id, name=device_name)
+        elif member_amounts:
+            if len(member_amounts) != len(for_ids):
+                raise HomeAssistantError(
+                    f"member_amounts has {len(member_amounts)} values but for_members has {len(for_ids)}"
+                )
+            items = [
+                {"amount": str(a), "forWhom": [{"memberId": mid, "weight": "1"}]}
+                for mid, a in zip(for_ids, member_amounts, strict=True)
+            ]
 
-            await self.coordinator.async_request_refresh()
-
-    @callback
-    def async_response_service(self, service_call: ServiceCall) -> None:
-        """Execute response service call function.
-
-        This will take a device id and return json data for the
-        devices info on the api.
-
-        If the device does not exist, it will raise an error.
-        """
-        device_id = service_call.data[ATTR_DEVICE_ID]
-        response = self.coordinator.get_device(device_id)
-
-        try:
-            assert response is not None
-        except AssertionError as ex:
-            raise HomeAssistantError(
-                "Error calling service: The device ID does not exist"
-            ) from ex
         else:
-            return response
+            n      = len(for_ids)
+            weight = str(round(1 / n, 6)) if n > 1 else "1"
+            items  = [
+                {
+                    "amount"  : str(amount),
+                    "forWhom" : [{"memberId": mid, "weight": weight} for mid in for_ids],
+                }
+            ]
+
+        transaction: dict[str, Any] = {
+            "type"              : "expense",
+            "purpose"           : call.data["purpose"],
+            "category"          : call.data["category"],
+            "currencyCode"      : currency,
+            "dateTime"          : int(time.time() * 1000),
+            "fixedExchangeRate" : False,
+            "whoPaid"           : [{"memberId": paid_by_id, "weight": str(amount)}],
+            "items"             : items,
+        }
+        try:
+            key = await coordinator.api.add_transaction(group_id, transaction)
+            _LOGGER.debug("Added transaction %s to group %s", key, group_id)
+        except RuntimeError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_settle_debt(call: ServiceCall) -> None:
+        """Record a debt settlement between two members of a SettleUp group."""
+        coordinator = _get_coordinator(hass)
+        group_id    = _group_id_from_device(hass, call.data["group"])
+        from_member = _member_id_from_entity(hass, call.data["from_member"], group_id)
+        to_member   = _member_id_from_entity(hass, call.data["to_member"], group_id)
+        amount      = call.data["amount"]
+        currency    = call.data.get("currency_code") or _group_currency(coordinator, group_id)
+
+        transaction: dict[str, Any] = {
+            "type"              : "transfer",
+            "purpose"           : "Settlement",
+            "category"          : "general",
+            "currencyCode"      : currency,
+            "dateTime"          : int(time.time() * 1000),
+            "fixedExchangeRate" : False,
+            "whoPaid"           : [{"memberId": from_member, "weight": str(amount)}],
+            "items"             : [
+                {
+                    "amount"  : str(amount),
+                    "forWhom" : [{"memberId": to_member, "weight": "1"}],
+                }
+            ],
+        }
+        try:
+            key = await coordinator.api.add_transaction(group_id, transaction)
+            _LOGGER.debug("Recorded settlement %s in group %s", key, group_id)
+        except RuntimeError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_ADD_TRANSACTION, handle_add_transaction, schema=ADD_TRANSACTION_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SETTLE_DEBT, handle_settle_debt, schema=SETTLE_DEBT_SCHEMA
+    )

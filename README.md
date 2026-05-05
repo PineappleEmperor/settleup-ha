@@ -4,11 +4,17 @@
 SettleUp Integration (SU) for Home Assistant
 =====================================
 
-This is an unofficial SettleUp integration for Home Assistant. This integration allows you to interact with your SettleUp account via the [SU API](https://docs.google.com/document/d/18mxnyYSm39cbceA2FxFLiOfyyanaBY6ogG7oscgghxU/edit?tab=t.0#heading=h.c38yf4mz8bod).
+This is an unofficial SettleUp integration for Home Assistant. This integration allows you to interact with your SettleUp account via the [SettleUp API](https://docs.google.com/document/d/18mxnyYSm39cbceA2FxFLiOfyyanaBY6ogG7oscgghxU/edit?tab=t.0#heading=h.c38yf4mz8bod).
+
+You will need to have an account on SettleUp and will need to request an API key via their support.
 
 Features
 --------
 
+-   A device for each group.
+-   An overall sensor for the last transaction with several useful attributes.
+-   A sensor for each member of the group.
+-   Sensors for each pair of members (disabled by default).
 -   Add a transaction.
 
 Installation
@@ -30,8 +36,4 @@ Configuration
 
 1.  In Home Assistant, navigate to **Configuration** > **Devices & Services**.
 2.  Click on **Add Integration** and search for "SettleUp".
-3.  
-
-### Configuration Options
-
-You can configure the integration options by navigating to **Configuration** > **Devices & Services**, selecting the SettleUp integration, and clicking on **Options**.
+3.  Enter your username, password, and API key to set up your account.

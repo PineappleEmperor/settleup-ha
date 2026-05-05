@@ -1,99 +1,74 @@
-"""DataUpdateCoordinator for our integration."""
+"""DataUpdateCoordinator for the SettleUp integration."""
+from __future__ import annotations
 
 from datetime import timedelta
 import logging
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_PASSWORD,
-    CONF_SCAN_INTERVAL,
-    CONF_USERNAME,
-)
-from homeassistant.core import DOMAIN, HomeAssistant
+from homeassistant.const import CONF_PASSWORD
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import API, APIConnectionError
-from .const import DEFAULT_SCAN_INTERVAL
+from .api import SettleUpAPI, SettleUpGroup
+from .const import CONF_API_KEY, CONF_EMAIL, DEFAULT_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+OPT_KNOWN_GROUPS = "known_groups"
 
-class SettleUpUpdateCoordinator(DataUpdateCoordinator):
-    """My example coordinator."""
 
-    data: list[dict[str, Any]]
+class SettleUpCoordinator(DataUpdateCoordinator[list[SettleUpGroup]]):
+    """Coordinator that fetches all groups."""
 
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-        """Initialize coordinator."""
-
-        # Set variables from values entered in config flow setup
-        self.host = config_entry.data[CONF_HOST]
-        self.user = config_entry.data[CONF_USERNAME]
-        self.pwd = config_entry.data[CONF_PASSWORD]
-
-        # set variables from options.  You need a default here in case options have not been set
-        self.poll_interval = config_entry.options.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialise with config entry credentials."""
+        self.api = SettleUpAPI(
+            api_key  = entry.data[CONF_API_KEY],
+            email    = entry.data[CONF_EMAIL],
+            password = entry.data[CONF_PASSWORD],
+            session  = async_get_clientsession(hass),
+            sandbox  = entry.data.get("sandbox", False),
         )
-
-        # Initialise DataUpdateCoordinator
         super().__init__(
             hass,
             _LOGGER,
-            name=f"{DOMAIN} ({config_entry.unique_id})",
-            # Method to call on every update interval.
-            update_method=self.async_update_data,
-            # Polling interval. Will only be polled if you have made your
-            # platform entities, CoordinatorEntities.
-            # Using config option here but you can just use a fixed value.
-            update_interval=timedelta(seconds=self.poll_interval),
+            name            = f"{DOMAIN} ({entry.unique_id})",
+            update_method   = self._async_update_data,
+            update_interval = timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            config_entry    = entry,
         )
 
-        # Initialise your api here and make available to your integration.
-        self.api = API(host=self.host, user=self.user, pwd=self.pwd, mock=True)
-
-    async def async_update_data(self):
-        """Fetch data from API endpoint.
-
-        This is the place to retrieve and pre-process the data into an appropriate data structure
-        to be used to provide values for all your entities.
-        """
+    async def _async_update_data(self) -> list[SettleUpGroup]:
+        """Fetch the latest data from SettleUp."""
         try:
-            # ----------------------------------------------------------------------------
-            # Get the data from your api
-            # NOTE: Change this to use a real api call for data
-            # ----------------------------------------------------------------------------
-            data = await self.hass.async_add_executor_job(self.api.get_data)
-        except APIConnectionError as err:
-            _LOGGER.error(err)
-            raise UpdateFailed(err) from err
+            raw_groups = await self.api.get_user_groups()
+            groups: list[SettleUpGroup] = []
+            for group_id, group_info in raw_groups.items():
+                member_id = group_info.get("memberId", "")
+                group = await SettleUpGroup.from_api(self.api, group_id, member_id)
+                groups.append(group)
+        except RuntimeError as err:
+            raise UpdateFailed(str(err)) from err
         except Exception as err:
-            # This will show entities as unavailable by raising UpdateFailed exception
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+            raise UpdateFailed(f"Unexpected error communicating with SettleUp: {err}") from err
 
-        # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return data
+        self._persist_known_entities(groups)
+        return groups
 
-    # ----------------------------------------------------------------------------
-    # Here we add some custom functions on our data coordinator to be called
-    # from entity platforms to get access to the specific data they want.
-    #
-    # These will be specific to your api or yo may not need them at all
-    # ----------------------------------------------------------------------------
-    def get_device(self, device_id: int) -> dict[str, Any]:
-        """Get a device entity from our api data."""
-        try:
-            return [
-                devices for devices in self.data if devices["device_id"] == device_id
-            ][0]
-        except (TypeError, IndexError):
-            # In this case if the device id does not exist you will get an IndexError.
-            # If api did not return any data, you will get TypeError.
-            return None
-
-    def get_device_parameter(self, device_id: int, parameter: str) -> Any:
-        """Get the parameter value of one of our devices from our api data."""
-        if device := self.get_device(device_id):
-            return device.get(parameter)
+    def _persist_known_entities(self, groups: list[SettleUpGroup]) -> None:
+        """Cache data for startup."""
+        assert self.config_entry is not None
+        known: dict[str, dict] = {
+            g.group_id: {
+                "name"     : g.name,
+                "currency" : g.converted_to_currency,
+                "members"  : {m.member_id: m.name for m in g.members},
+            }
+            for g in groups
+        }
+        if known != self.config_entry.options.get(OPT_KNOWN_GROUPS):
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                options={**self.config_entry.options, OPT_KNOWN_GROUPS: known},
+            )
