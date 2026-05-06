@@ -7,12 +7,12 @@
 ![build][hassfest-badge]
 ![build][hacs-valid-badge]
 
-SettleUp Integration (SU) for Home Assistant
+Settle Up Integration (SU) for Home Assistant
 =====================================
 
-This is an unofficial SettleUp integration for Home Assistant. This integration allows you to interact with your SettleUp account via the [SettleUp API](https://docs.google.com/document/d/18mxnyYSm39cbceA2FxFLiOfyyanaBY6ogG7oscgghxU/edit?tab=t.0#heading=h.c38yf4mz8bod).
+This is an unofficial Settle Up integration for Home Assistant. This integration allows you to interact with your Settle Up account via the [Settle Up API]([https://docs.google.com/document/d/18mxnyYSm39cbceA2FxFLiOfyyanaBY6ogG7oscgghxU/edit?tab=t.0#heading=h.c38yf4mz8bod](https://api.settleup.io/)).
 
-You will need to have an account on SettleUp and will need to request an API key via their support.
+You will need to have an account on Settle Up and will need to request an API key via their tomas (at) stepuplabs.io.
 
 Features
 --------
@@ -33,7 +33,7 @@ Installation
 
 1.  Ensure that you have HACS installed in your Home Assistant instance.
 2.  Add this repository to HACS as a custom repository.
-3.  Search for "SettleUp" in HACS and install it.
+3.  Search for "Settle Up" in HACS and install it.
 
 Configuration
 -------------
@@ -41,7 +41,7 @@ Configuration
 ### Adding the Integration
 
 1.  In Home Assistant, navigate to **Configuration** > **Devices & Services**.
-2.  Click on **Add Integration** and search for "SettleUp".
+2.  Click on **Add Integration** and search for "Settle Up".
 3.  Enter your username, password, and API key to set up your account.
 
 <!-- Badges -->
