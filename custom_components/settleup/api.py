@@ -1,4 +1,4 @@
-"""SettleUp API client and data classes."""
+"""Settle Up API client and data classes."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,7 +12,7 @@ from .const import FIREBASE_AUTH_URL, FIREBASE_REFRESH_URL, LIVE_DB, SANDBOX_DB
 
 @dataclass
 class SettleUpDebt:
-    """A single debt between two members within a SettleUp group."""
+    """A single debt between two members within a Settle Up group."""
 
     group_id    : str
     from_member : str
@@ -32,7 +32,7 @@ class SettleUpDebt:
 
 @dataclass
 class SettleUpMember:
-    """A member within a particular SettleUp group."""
+    """A member within a particular Settle Up group."""
 
     group_id       : str
     member_id      : str
@@ -61,7 +61,7 @@ class SettleUpMember:
 
 @dataclass
 class SettleUpGroup:
-    """Details of a SettleUp group, including its members and debts."""
+    """Details of a Settle Up group, including its members and debts."""
 
     group_id              : str
     main_member_id        : str
@@ -127,7 +127,7 @@ class SettleUpGroup:
 
 
 class SettleUpAPI:
-    """Client for SettleUp API."""
+    """Client for Settle Up API."""
 
     def __init__(
         self,
@@ -184,7 +184,7 @@ class SettleUpAPI:
         async with self._session.post(url, data=payload) as resp:
             data: dict[str, Any] = await resp.json()
         if "error" in data:
-            raise RuntimeError(f"SettleUp token refresh failed: {data['error']}")
+            raise RuntimeError(f"Settle Up token refresh failed: {data['error']}")
         self.id_token      = data["id_token"]
         self.refresh_token = data["refresh_token"]
         self.user_id       = data["user_id"]

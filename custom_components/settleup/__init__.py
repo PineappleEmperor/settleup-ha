@@ -1,4 +1,4 @@
-"""The SettleUp integration."""
+"""The Settle Up integration."""
 from __future__ import annotations
 
 import logging

@@ -1,4 +1,4 @@
-"""Sensor platform for the SettleUp integration."""
+"""Sensor platform for the Settle Up integration."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -29,7 +29,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SettleUp sensors.
+    """Set up Settle Up sensors.
 
     Entities for previously-seen groups/members are created immediately from the
     options cache so they can restore their last-known state even if the API is
@@ -102,7 +102,7 @@ def _group_device(group_id: str, group: SettleUpGroup | None, cached_name: str =
     return DeviceInfo(
         identifiers  = {(DOMAIN, group_id)},
         name         = (group.name if group else None) or cached_name or group_id,
-        manufacturer = "SettleUp",
+        manufacturer = "Settle Up",
         model        = "Group",
     )
 

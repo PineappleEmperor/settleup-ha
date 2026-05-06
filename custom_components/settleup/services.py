@@ -1,4 +1,4 @@
-"""Services for the SettleUp integration."""
+"""Services for the Settle Up integration."""
 from __future__ import annotations
 
 import logging
@@ -52,7 +52,7 @@ SETTLE_DEBT_SCHEMA = vol.Schema(
 def _get_coordinator(hass: HomeAssistant) -> SettleUpCoordinator:
     for entry in hass.config_entries.async_entries(DOMAIN):
         return entry.runtime_data
-    raise HomeAssistantError("No SettleUp integration loaded")
+    raise HomeAssistantError("No Settle Up integration loaded")
 
 
 def _group_id_from_device(hass: HomeAssistant, device_id: str) -> str:
@@ -63,7 +63,7 @@ def _group_id_from_device(hass: HomeAssistant, device_id: str) -> str:
     for domain, identifier in device.identifiers:
         if domain == DOMAIN:
             return identifier
-    raise HomeAssistantError(f"Device {device_id!r} is not a SettleUp group")
+    raise HomeAssistantError(f"Device {device_id!r} is not a Settle Up group")
 
 
 def _member_id_from_entity(hass: HomeAssistant, entity_id: str, group_id: str) -> str:
@@ -77,7 +77,7 @@ def _member_id_from_entity(hass: HomeAssistant, entity_id: str, group_id: str) -
     suffix = "_balance"
     if uid.startswith(prefix) and uid.endswith(suffix):
         return uid[len(prefix):-len(suffix)]
-    raise HomeAssistantError(f"{entity_id} is not a SettleUp member sensor for group {group_id}")
+    raise HomeAssistantError(f"{entity_id} is not a Settle Up member sensor for group {group_id}")
 
 
 def _group_currency(coordinator: SettleUpCoordinator, group_id: str) -> str:
@@ -91,10 +91,10 @@ def _group_currency(coordinator: SettleUpCoordinator, group_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 def async_setup_services(hass: HomeAssistant) -> None:
-    """Register SettleUp services."""
+    """Register Settle Up services."""
 
     async def handle_add_transaction(call: ServiceCall) -> None:
-        """Add an expense transaction to a SettleUp group."""
+        """Add an expense transaction to a Settle Up group."""
         coordinator    = _get_coordinator(hass)
         group_id       = _group_id_from_device(hass, call.data["group"])
         paid_by_id     = _member_id_from_entity(hass, call.data["paid_by"], group_id)
@@ -162,7 +162,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError(str(err)) from err
 
     async def handle_settle_debt(call: ServiceCall) -> None:
-        """Record a debt settlement between two members of a SettleUp group."""
+        """Record a debt settlement between two members of a Settle Up group."""
         coordinator = _get_coordinator(hass)
         group_id    = _group_id_from_device(hass, call.data["group"])
         from_member = _member_id_from_entity(hass, call.data["from_member"], group_id)

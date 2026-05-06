@@ -1,6 +1,6 @@
 {
   "domain": "settleup",
-  "name": "SettleUp",
+  "name": "Settle Up",
   "codeowners": ["@PineappleEmperor"],
   "config_flow": true,
   "dependencies": [],

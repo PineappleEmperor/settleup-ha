@@ -21,7 +21,7 @@ LIVE_DB    = "https://settle-up-live.firebaseio.com"
 
 TRANSACTION_SCHEMA = {
     "$schema": "https://json-schema.org/draft-07/schema",
-    "title": "SettleUp Transaction Schema",
+    "title": "Settle Up Transaction Schema",
     "type": "object",
     "properties": {
         "category": {"type": "string"},

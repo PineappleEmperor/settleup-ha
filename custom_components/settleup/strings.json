@@ -1,25 +1,25 @@
 {
   "config": {
     "abort": {
-      "already_configured": "This SettleUp account is already configured.",
+      "already_configured": "This Settle Up account is already configured.",
       "already_in_progress": "A setup is already in progress for this account."
     },
     "error": {
-      "cannot_connect": "Failed to connect to SettleUp. Check your internet connection.",
+      "cannot_connect": "Failed to connect to Settle Up. Check your internet connection.",
       "invalid_auth": "Invalid email or password.",
       "unknown": "An unexpected error occurred."
     },
     "step": {
       "user": {
-        "title": "Connect your SettleUp account",
-        "description": "Enter the email and password you use to sign in to SettleUp.",
+        "title": "Connect your Settle Up account",
+        "description": "Enter the email and password you use to sign in to Settle Up.",
         "data": {
-          "api_key": "SettleUp API Key",
+          "api_key": "Settle Up API Key",
           "email": "Email",
           "password": "Password"
         },
         "data_description": {
-          "api_key": "The SettleUp Web API key."
+          "api_key": "The Settle Up Web API key."
         }
       }
     }
