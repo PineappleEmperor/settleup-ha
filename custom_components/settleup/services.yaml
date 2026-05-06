@@ -1,10 +1,10 @@
 add_transaction:
   name: Add Transaction
-  description: Add an expense to a SettleUp group.
+  description: Add an expense to a Settle Up group.
   fields:
     group:
       name: Group
-      description: The SettleUp group to add the transaction to.
+      description: The Settle Up group to add the transaction to.
       required: true
       selector:
         device:
@@ -18,14 +18,11 @@ add_transaction:
         text:
     amount:
       name: Amount
-      description: Total expense amount.
+      description: Total expense amount. Supports templates.
       required: true
-      example: 42.50
+      example: "42.50"
       selector:
-        number:
-          min: 0
-          step: 0.01
-          mode: box
+        template:
     currency_code:
       name: Currency Code
       description: "ISO 4217 currency code. Defaults to the group's configured currency."
@@ -56,23 +53,21 @@ add_transaction:
     weights:
       name: Weights
       description: >
-        Optional. Relative share per member.
-        [2, 1] gives a 2:1 split.
-        Cannot be used together with Member Amounts.
+        Optional. Relative share per member [2, 1] gives a 2:1 split.
+        Cannot be used together with Member Amounts. Supports templates.
       required: false
       example: "[2, 1]"
       selector:
-        object:
+        template:
     member_amounts:
       name: Member Amounts
       description: >
         Optional. Exact amount owed by each member.
-        When provided, Amount is optional and defaults to the sum.
-        Cannot be used together with Weights.
+        Cannot be used together with Weights. Supports templates.
       required: false
       example: "[20.00, 10.00]"
       selector:
-        object:
+        template:
     category:
       name: Category
       description: Expense category.
@@ -80,6 +75,7 @@ add_transaction:
       default: "general"
       selector:
         select:
+          custom_value: true
           options:
             - label: General
               value: general
@@ -102,11 +98,11 @@ add_transaction:
 
 settle_debt:
   name: Settle Debt
-  description: Record a debt settlement (transfer) between two members of a SettleUp group.
+  description: Record a debt settlement (transfer) between two members of a Settle Up group.
   fields:
     group:
       name: Group
-      description: The SettleUp group the debt belongs to.
+      description: The Settle Up group the debt belongs to.
       required: true
       selector:
         device:
