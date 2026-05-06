@@ -13,6 +13,7 @@ from homeassistant.helpers import (
     config_validation as cv,
     device_registry as dr,
     entity_registry as er,
+    template as template_helper,
 )
 
 from .const import DOMAIN
@@ -27,13 +28,19 @@ ADD_TRANSACTION_SCHEMA = vol.Schema(
     {
         vol.Required("group"):                           cv.string,
         vol.Required("purpose"):                         cv.string,
-        vol.Required("amount"):                          vol.Coerce(float),
+        vol.Required("amount"):                          vol.Any(vol.Coerce(float), cv.template),
         vol.Optional("currency_code"):                   vol.All(cv.string, vol.Length(min=3, max=3)),
         vol.Required("paid_by"):                         cv.entity_id,
         vol.Required("for_members"):                     vol.All(cv.ensure_list, [cv.entity_id]),
-        vol.Optional("weights"):                         vol.All(cv.ensure_list, [vol.Coerce(float)]),
-        vol.Optional("member_amounts"):                  vol.All(cv.ensure_list, [vol.Coerce(float)]),
-        vol.Optional("category", default="general"):     cv.string,
+        vol.Optional("weights"):                         vol.Any(
+                                                             vol.All(cv.ensure_list, [vol.Coerce(float)]),
+                                                             cv.template,
+                                                         ),
+        vol.Optional("member_amounts"):                  vol.Any(
+                                                             vol.All(cv.ensure_list, [vol.Coerce(float)]),
+                                                             cv.template,
+                                                         ),
+        vol.Optional("category", default="general"):     cv.template,
     }
 )
 
@@ -88,6 +95,22 @@ def _group_currency(coordinator: SettleUpCoordinator, group_id: str) -> str:
                 return group.converted_to_currency
     return "GBP"
 
+
+def _resolve(hass: HomeAssistant, value: Any) -> Any:
+    """Render value if it is a Jinja2 Template, otherwise return as-is."""
+    if isinstance(value, template_helper.Template):
+        value.hass = hass
+        return value.async_render(parse_result=True)
+    return value
+
+
+def _resolve_float_list(hass: HomeAssistant, value: Any) -> list[float]:
+    """Resolve a value that is either a list of floats or a template rendering one."""
+    rendered = _resolve(hass, value)
+    if isinstance(rendered, list):
+        return [float(v) for v in rendered]
+    raise HomeAssistantError(f"Expected a list of numbers, got: {rendered!r}")
+
 # ---------------------------------------------------------------------------
 
 def async_setup_services(hass: HomeAssistant) -> None:
@@ -102,10 +125,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
             _member_id_from_entity(hass, eid, group_id)
             for eid in call.data["for_members"]
         ]
-        amount         = call.data["amount"]
-        weights        = call.data.get("weights")
-        member_amounts = call.data.get("member_amounts")
+        amount         = float(_resolve(hass, call.data["amount"]))
+        weights        = _resolve_float_list(hass, call.data["weights"]) if "weights" in call.data else None
+        member_amounts = _resolve_float_list(hass, call.data["member_amounts"]) if "member_amounts" in call.data else None
         currency       = call.data.get("currency_code") or _group_currency(coordinator, group_id)
+        category       = str(_resolve(hass, call.data["category"]))
 
         if weights and member_amounts:
             raise HomeAssistantError("Specify either weights or member_amounts, not both")
@@ -148,7 +172,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         transaction: dict[str, Any] = {
             "type"              : "expense",
             "purpose"           : call.data["purpose"],
-            "category"          : call.data["category"],
+            "category"          : category,
             "currencyCode"      : currency,
             "dateTime"          : int(time.time() * 1000),
             "fixedExchangeRate" : False,
