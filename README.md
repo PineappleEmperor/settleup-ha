@@ -1,5 +1,11 @@
-[![Python package](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/python_validate.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/python_validate.yml) [![Validate with hassfest](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hassfest_validate.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hassfest_validate.yml) [![HACS Action](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hacs_validate.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/hacs_validate.yml)
-[![Release](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/semantic_release.yml/badge.svg?branch=main)](https://github.com/PineappleEmperor/settleup-ha/actions/workflows/semantic_release.yml)
+[![release][release-badge]][release-url]
+[![commits-since-latest][commits-badge]][commits-url]
+![stars][stars-badge]
+![Dynamic Regex Badge][hacs-badge]
+\
+![build][python-badge]
+![build][hassfest-badge]
+![build][hacs-valid-badge]
 
 SettleUp Integration (SU) for Home Assistant
 =====================================
@@ -37,3 +43,20 @@ Configuration
 1.  In Home Assistant, navigate to **Configuration** > **Devices & Services**.
 2.  Click on **Add Integration** and search for "SettleUp".
 3.  Enter your username, password, and API key to set up your account.
+
+<!-- Badges -->
+
+[commits-badge]: https://img.shields.io/github/commits-since/PineappleEmperor/settleup-ha/latest?style=flat-square
+[downloads-badge]: https://img.shields.io/github/downloads/pineappleemperor/settleup-ha/total?style=flat-square
+[hacs-badge]: https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Fhacs%2Fdefault%2Frefs%2Fheads%2Fmaster%2Fintegration&search=(%22PineappleEmperor%2Fsettleup-ha%22)&replace=default&style=flat-square&label=hacs&link=https%3A%2F%2Fgithub.com%2Fhacs%2Fintegration
+[hacs-valid-badge]: https://img.shields.io/github/actions/workflow/status/PineappleEmperor/settleup-ha/hacs_validate.yml?style=flat-square&label=hacs%20valid
+[release-badge]: https://img.shields.io/github/v/release/PineappleEmperor/settleup-ha?style=flat-square
+[stars-badge]: https://img.shields.io/github/stars/PineappleEmperor/settleup-ha?style=flat-square
+[hassfest-badge]: https://img.shields.io/github/actions/workflow/status/PineappleEmperor/settleup-ha/hassfest_validate.yml?style=flat-square&label=hassfest
+[python-badge]: https://img.shields.io/github/actions/workflow/status/PineappleEmperor/settleup-ha/python_validate.yml?style=flat-square&label=python
+
+<!-- References -->
+
+[commits-url]: https://github.com/PineappleEmperor/settleup-ha/commits/main/
+[hacs-url]: https://github.com/hacs/integration
+[release-url]: https://github.com/PineappleEmperor/settleup-ha/releases
