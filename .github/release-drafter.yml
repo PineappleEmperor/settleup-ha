@@ -12,20 +12,23 @@ autolabeler:
       - '/^fix\/.+/'
     title:
       - '/^fix.*/i'
-  - label: "enhancement"
+  - label: "feature"
     branch:
       - '/^(feature|feat)\/.+/'
     title:
       - '/^(feat|feature).*/i'
 categories:
+  - title: '🚨 Breaking Change'
+    labels:
+      - 'xfeat'
+      - 'xfeature'
+      - 'major'
   - title: '🚀 Features'
     labels:
       - 'feat'
       - 'feature'
-      - 'xfeat'
-      - 'xfeature'
       - 'enhancement'
-  - title: '🐛 Bug Fixes'
+  - title: '🔧 Fixes'
     labels:
       - 'fix'
       - 'bugfix'
@@ -38,10 +41,12 @@ version-resolver:
   major:
     labels:
       - 'major'
-      - 'feature'
-      - 'feat'
+      - 'xfeature'
+      - 'xfeat'
   minor:
     labels:
+      - 'feat'
+      - 'feature'
       - 'minor'
   patch:
     labels:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from itertools import combinations
 import logging
 from typing import Any
 
@@ -17,9 +18,9 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import SettleUpDebt, SettleUpGroup, SettleUpMember
+from .api import SettleUpGroup, SettleUpMember
 from .const import DOMAIN
-from .coordinator import OPT_KNOWN_GROUPS, SettleUpCoordinator
+from .coordinator import SettleUpCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,21 +30,15 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Settle Up sensors.
-
-    Entities for previously-seen groups/members are created immediately from the
-    options cache so they can restore their last-known state even if the API is
-    unreachable at boot.  The coordinator listener then adds any newly-discovered
-    groups or members when live data arrives.
-    """
+    """Set up Settle Up sensors."""
     coordinator: SettleUpCoordinator = entry.runtime_data
     known_group_ids:  set[str]                       = set()
     known_member_ids: dict[str, set[str]]             = {}
-    known_debt_ids:   dict[str, set[tuple[str, str]]] = {}
+    known_pair_ids:   dict[str, set[tuple[str, str]]] = {}
 
     @callback
     def _async_add_new_entities() -> None:
-        """Create sensors for any groups/members/debts not yet registered."""
+        """Create sensors for any groups/members/pairs not yet registered."""
         new_entities: list[SensorEntity] = []
 
         for group in coordinator.data or []:
@@ -58,48 +53,33 @@ async def async_setup_entry(
                 mid = member.member_id
                 if mid not in known_member_ids.get(gid, set()):
                     known_member_ids.setdefault(gid, set()).add(mid)
-                    new_entities.append(
-                        SettleUpMemberSensor(coordinator, gid, mid)
-                    )
+                    new_entities.append(SettleUpMemberSensor(coordinator, gid, mid))
 
-            group_debts = known_debt_ids.setdefault(gid, set())
-            for debt in group.debts:
-                pair = (debt.from_member, debt.to_member)
-                if pair not in group_debts:
-                    group_debts.add(pair)
+            # Pre-create all canonical pairs sorted by member name so sensors
+            # never flip direction or go unavailable when debts are settled/reversed.
+            group_pairs = known_pair_ids.setdefault(gid, set())
+            sorted_members = sorted(
+                group.members, key=lambda m: (m.name.casefold(), m.member_id)
+            )
+            for m_a, m_b in combinations(sorted_members, 2):
+                pair = (m_a.member_id, m_b.member_id)
+                if pair not in group_pairs:
+                    group_pairs.add(pair)
                     new_entities.append(
-                        SettleUpDebtSensor(coordinator, gid, debt.from_member, debt.to_member)
+                        SettleUpDebtSensor(coordinator, gid, m_a.member_id, m_b.member_id)
                     )
 
         if new_entities:
             async_add_entities(new_entities)
 
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
-
-    # Cold-start: restore from cached options so entities exist before the first refresh.
-    cold_start: list[SensorEntity] = []
-    cached_groups: dict[str, dict[str, Any]] = entry.options.get(OPT_KNOWN_GROUPS, {})
-    for gid, group_info in cached_groups.items():
-        cached_name = group_info.get("name", gid)
-        if gid not in known_group_ids:
-            known_group_ids.add(gid)
-            known_member_ids[gid] = set()
-            cold_start.append(SettleUpGroupSensor(coordinator, gid, cached_name))
-        for mid in group_info.get("members", {}):
-            if mid not in known_member_ids.get(gid, set()):
-                known_member_ids.setdefault(gid, set()).add(mid)
-                cold_start.append(SettleUpMemberSensor(coordinator, gid, mid))
-
-    if cold_start:
-        async_add_entities(cold_start)
-
     _async_add_new_entities()
 
 # ---------------------------------------------------------------------------
 
 def _group_device(group_id: str, group: SettleUpGroup | None, cached_name: str = "") -> DeviceInfo:
     """Return DeviceInfo that places an entity on the correct group device."""
-    friendly = (group.name if group else None) or cached_name or group_id
+    friendly = (group.name if group else None) or cached_name
     return DeviceInfo(
         identifiers  = {(DOMAIN, group_id)},
         name         = f"SettleUp {friendly}",
@@ -117,7 +97,6 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
     _attr_icon            = "mdi:receipt-text-clock"
 
     def __init__(self, coordinator: SettleUpCoordinator, group_id: str, cached_name: str = "") -> None:
-        """Initialise the sensor for a specific group."""
         super().__init__(coordinator)
         self._group_id       = group_id
         self._cached_name    = cached_name
@@ -125,7 +104,6 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
         self._attr_name      = "Last Transaction"
 
     async def async_added_to_hass(self) -> None:
-        """Restore last state if the coordinator hasn't succeeded yet."""
         await super().async_added_to_hass()
         if self.coordinator.data is None:
             last = await self.async_get_last_sensor_data()
@@ -146,6 +124,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 
     @property
     def native_value(self) -> datetime | None:
+        """Return datetime of the most recent transaction, or None if none exist."""
         group = self._group
         if group is None:
             return self._attr_native_value  # type: ignore[return-value]
@@ -156,6 +135,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info for the group device."""
         return _group_device(self._group_id, self._group, self._cached_name)
 
     @property
@@ -201,7 +181,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 # ---------------------------------------------------------------------------
 
 class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
-    """A specific member's net balance within a group, with per-counterparty debt breakdown."""
+    """A specific member's net balance within a group."""
 
     _attr_has_entity_name = True
     _attr_device_class    = SensorDeviceClass.MONETARY
@@ -222,6 +202,7 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 
     @property
     def _group(self) -> SettleUpGroup | None:
+        """Return the live group data for this sensor, or None if not found."""
         return next(
             (g for g in (self.coordinator.data or []) if g.group_id == self._group_id),
             None,
@@ -229,6 +210,7 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 
     @property
     def _member(self) -> SettleUpMember | None:
+        """Return this member's data from the group, or None if not found."""
         group = self._group
         if group is None:
             return None
@@ -236,15 +218,18 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 
     @property
     def name(self) -> str:
+        """Return member display name."""
         member = self._member
         return (member.name if member else None) or self._member_id
 
     @property
     def available(self) -> bool:
+        """Return True if the coordinator succeeded and this member exists in the group."""
         return self.coordinator.last_update_success and self._member is not None
 
     @property
     def native_value(self) -> float | None:
+        """Return this member's net balance (positive = owed money, negative = owes money)."""
         group = self._group
         if group is None:
             return None
@@ -252,11 +237,13 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
+        """Return the group's display currency."""
         group = self._group
         return group.converted_to_currency if group else None
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info for the group device."""
         return _group_device(self._group_id, self._group)
 
     @property
@@ -284,7 +271,16 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 # ---------------------------------------------------------------------------
 
 class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
-    """A pairwise debt sensor."""
+    """Net debt between a canonical pair of members, ordered alphabetically by name.
+
+    Positive  → first member owes second.
+    Negative  → second member owes first.
+    Zero      → settled (no debt in either direction).
+
+    The sensor never goes unavailable due to a debt direction flip; it simply
+    changes sign.
+    """
+
     _attr_has_entity_name                 = True
     _attr_state_class                     = SensorStateClass.MEASUREMENT
     _attr_icon                            = "mdi:cash-clock"
@@ -294,34 +290,26 @@ class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
         self,
         coordinator: SettleUpCoordinator,
         group_id: str,
-        from_member_id: str,
-        to_member_id: str,
+        first_id: str,
+        second_id: str,
     ) -> None:
-        """Initialise the sensor for one debt pair."""
+        """Initialise the sensor for a canonical member pair."""
         super().__init__(coordinator)
         self._group_id       = group_id
-        self._from_id        = from_member_id
-        self._to_id          = to_member_id
-        self._attr_unique_id = f"{DOMAIN}_{group_id}_{from_member_id}_{to_member_id}_debt"
+        self._first_id       = first_id
+        self._second_id      = second_id
+        self._attr_unique_id = f"{DOMAIN}_{group_id}_{first_id}_{second_id}_pair"
 
     @property
     def _group(self) -> SettleUpGroup | None:
+        """Return the live group data for this sensor, or None if not found."""
         return next(
             (g for g in (self.coordinator.data or []) if g.group_id == self._group_id),
             None,
         )
 
-    @property
-    def _debt(self) -> SettleUpDebt | None:
-        group = self._group
-        if group is None:
-            return None
-        return next(
-            (d for d in group.debts if d.from_member == self._from_id and d.to_member == self._to_id),
-            None,
-        )
-
     def _member_name(self, member_id: str) -> str:
+        """Return a member's display name, falling back to their ID."""
         group = self._group
         if group is None:
             return member_id
@@ -330,29 +318,45 @@ class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
 
     @property
     def name(self) -> str:
-        return f"{self._member_name(self._from_id)} → {self._member_name(self._to_id)}"
+        """Return canonical pair name."""
+        return f"{self._member_name(self._first_id)} / {self._member_name(self._second_id)}"
 
     @property
     def available(self) -> bool:
-        return self._debt is not None
+        """Return True while the group exists; direction flips do not cause unavailability."""
+        return self._group is not None
 
     @property
-    def native_value(self) -> float | None:
-        debt = self._debt
-        return debt.amount if debt else None
+    def native_value(self) -> float:
+        """Return signed debt amount: positive = first owes second, negative = second owes first."""
+        group = self._group
+        if group is None:
+            return 0.0
+        for debt in group.debts:
+            if debt.from_member == self._first_id and debt.to_member == self._second_id:
+                return debt.amount   # first owes second → positive
+            if debt.from_member == self._second_id and debt.to_member == self._first_id:
+                return -debt.amount  # second owes first → negative
+        return 0.0
 
     @property
     def native_unit_of_measurement(self) -> str | None:
+        """Return the group's display currency."""
         group = self._group
         return group.converted_to_currency if group else None
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info for the group device."""
         return _group_device(self._group_id, self._group)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "from": self._member_name(self._from_id),
-            "to":   self._member_name(self._to_id),
-        }
+        value  = self.native_value
+        first  = self._member_name(self._first_id)
+        second = self._member_name(self._second_id)
+        if value > 0:
+            return {"owes": first, "to": second, "amount": value}
+        if value < 0:
+            return {"owes": second, "to": first, "amount": abs(value)}
+        return {"settled": True}
