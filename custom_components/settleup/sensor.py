@@ -82,7 +82,7 @@ def _group_device(group_id: str, group: SettleUpGroup | None, cached_name: str =
     friendly = (group.name if group else None) or cached_name
     return DeviceInfo(
         identifiers  = {(DOMAIN, group_id)},
-        name         = f"SettleUp {friendly}",
+        name         = f"Settle Up {friendly}",
         manufacturer = "Settle Up",
         model        = "Group",
     )
