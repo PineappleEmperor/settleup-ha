@@ -99,9 +99,10 @@ async def async_setup_entry(
 
 def _group_device(group_id: str, group: SettleUpGroup | None, cached_name: str = "") -> DeviceInfo:
     """Return DeviceInfo that places an entity on the correct group device."""
+    friendly = (group.name if group else None) or cached_name or group_id
     return DeviceInfo(
         identifiers  = {(DOMAIN, group_id)},
-        name         = (group.name if group else None) or cached_name or group_id,
+        name         = f"SettleUp {friendly}",
         manufacturer = "Settle Up",
         model        = "Group",
     )
