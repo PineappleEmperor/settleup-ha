@@ -7,7 +7,7 @@ autolabeler:
       - '/^(chore|docs?)\/.+/'
     title:
       - '/^(chore|docs).*/i'
-  - label: "bug"
+  - label: "fix"
     branch:
       - '/^fix\/.+/'
     title:
