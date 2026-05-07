@@ -12,7 +12,7 @@ autolabeler:
       - '/^fix\/.+/'
     title:
       - '/^fix.*/i'
-  - label: "enhancement"
+  - label: "feature"
     branch:
       - '/^(feature|feat)\/.+/'
     title:
@@ -25,7 +25,7 @@ categories:
       - 'xfeat'
       - 'xfeature'
       - 'enhancement'
-  - title: '🐛 Bug Fixes'
+  - title: '🔧 Fixes'
     labels:
       - 'fix'
       - 'bugfix'
