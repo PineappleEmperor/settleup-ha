@@ -18,12 +18,15 @@ autolabeler:
     title:
       - '/^(feat|feature).*/i'
 categories:
+  - title: '🚨 Breaking Change'
+    labels:
+      - 'xfeat'
+      - 'xfeature'
+      - 'major'
   - title: '🚀 Features'
     labels:
       - 'feat'
       - 'feature'
-      - 'xfeat'
-      - 'xfeature'
       - 'enhancement'
   - title: '🔧 Fixes'
     labels:
@@ -38,10 +41,12 @@ version-resolver:
   major:
     labels:
       - 'major'
-      - 'feature'
-      - 'feat'
+      - 'xfeature'
+      - 'xfeat'
   minor:
     labels:
+      - 'feat'
+      - 'feature'
       - 'minor'
   patch:
     labels:
