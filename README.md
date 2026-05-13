@@ -7,42 +7,69 @@
 ![build][hassfest-badge]
 ![build][hacs-valid-badge]
 
-Settle Up Integration (SU) for Home Assistant
-=====================================
+# Settle Up Integration for Home Assistant
 
-This is an unofficial Settle Up integration for Home Assistant. This integration allows you to interact with your Settle Up account via the [Settle Up API]([https://docs.google.com/document/d/18mxnyYSm39cbceA2FxFLiOfyyanaBY6ogG7oscgghxU/edit?tab=t.0#heading=h.c38yf4mz8bod](https://api.settleup.io/)).
+This is an unofficial Settle Up integration for Home Assistant. This integration allows you to interact with your Settle Up account via the [Settle Up API](https://api.settleup.io/).
 
-You will need to have an account on Settle Up and will need to request an API key via their tomas (at) stepuplabs.io.
+> **Prerequisite** — you need a Settle Up account and a Firebase API key. Request one from tomas (at) stepuplabs.io.
 
-Features
---------
+## Installation
 
--   A device for each group.
--   An overall sensor for the last transaction with several useful attributes.
--   A sensor for each member of the group.
--   Sensors for each pair of members (disabled by default).
--   Add a transaction.
-
-Installation
-------------
-
-### HACS (Home Assistant Community Store)
+### HACS (recommended)
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pineappleemperor&repository=settleup-ha&category=Integration)
 
-### Other ways to Install
+### Manual
+Copy the `custom_components/settleup` directory into your Home Assistant `custom_components` folder and restart.
 
-1.  Ensure that you have HACS installed in your Home Assistant instance.
-2.  Add this repository to HACS as a custom repository.
-3.  Search for "Settle Up" in HACS and install it.
+## Configuration
 
-Configuration
--------------
+**Settings → Devices & Services → Add Integration → Settle Up**
 
-### Adding the Integration
+Enter your email, password, and Firebase API key.
 
-1.  In Home Assistant, navigate to **Configuration** > **Devices & Services**.
-2.  Click on **Add Integration** and search for "Settle Up".
-3.  Enter your username, password, and API key to set up your account.
+After setup, open the integration's **Configure** menu to change the polling interval (default 5 minutes, range 1–60 minutes).
+
+## Sensors
+
+One device is created per Settle Up group. Each device has:
+
+| Sensor | Description |
+|--------|-------------|
+| **Last Transaction** | Timestamp of the most recent transaction. Attributes include `currency`, `members`, `debts`, `main_member`, and `recent_transactions`. |
+| **Member balance** (one per member) | Net balance for that member — positive means they are owed money, negative means they owe. Attributes break down individual debts. Sensors for **inactive members are disabled by default**. |
+| **Pair debt** (one per member pair, disabled by default) | Signed debt between a canonical pair sorted alphabetically by name. Positive → first owes second; negative → second owes first; zero → settled. |
+
+## Services
+
+### `settleup.add_transaction`
+
+Add an expense to a group.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `group` | ✓ | The Settle Up group device |
+| `purpose` | ✓ | Description of the expense |
+| `amount` | ✓ | Total amount (supports templates) |
+| `paid_by` | ✓ | Member who paid |
+| `for_members` | ✓ | Members splitting the expense |
+| `weights` | — | Relative shares, e.g. `[2, 1]` for a 2:1 split. Cannot be used with `member_amounts`. Supports templates. |
+| `member_amounts` | — | Exact amount owed by each member. Cannot be used with `weights`. Supports templates. |
+| `category` | — | Expense category (default: `general`). Supports templates and custom values. |
+| `currency_code` | — | ISO 4217 code. Defaults to the group's currency. |
+
+If neither `weights` nor `member_amounts` is provided, the expense is split equally.
+
+### `settleup.settle_debt`
+
+Record a debt settlement (transfer) between two members.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `group` | ✓ | The Settle Up group device |
+| `from_member` | ✓ | Member paying |
+| `to_member` | ✓ | Member being paid |
+| `amount` | ✓ | Settlement amount |
+| `currency_code` | — | ISO 4217 code. Defaults to the group's currency. |
 
 <!-- Badges -->
 

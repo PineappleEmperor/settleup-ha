@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -53,7 +54,7 @@ async def async_setup_entry(
                 mid = member.member_id
                 if mid not in known_member_ids.get(gid, set()):
                     known_member_ids.setdefault(gid, set()).add(mid)
-                    new_entities.append(SettleUpMemberSensor(coordinator, gid, mid))
+                    new_entities.append(SettleUpMemberSensor(coordinator, gid, mid, member.active))
 
             # Pre-create all canonical pairs sorted by member name so sensors
             # never flip direction or go unavailable when debts are settled/reversed.
@@ -183,22 +184,25 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
     """A specific member's net balance within a group."""
 
-    _attr_has_entity_name = True
-    _attr_device_class    = SensorDeviceClass.MONETARY
-    _attr_state_class     = SensorStateClass.MEASUREMENT
-    _attr_icon            = "mdi:account-cash"
+    _attr_has_entity_name               = True
+    _attr_device_class                  = SensorDeviceClass.MONETARY
+    _attr_state_class                   = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision   = 2
+    _attr_icon                          = "mdi:account-cash"
 
     def __init__(
         self,
         coordinator: SettleUpCoordinator,
         group_id: str,
         member_id: str,
+        active: bool = True,
     ) -> None:
         """Initialise the sensor."""
         super().__init__(coordinator)
-        self._group_id       = group_id
-        self._member_id      = member_id
-        self._attr_unique_id = f"{DOMAIN}_{group_id}_{member_id}_balance"
+        self._group_id                          = group_id
+        self._member_id                         = member_id
+        self._attr_unique_id                    = f"{DOMAIN}_{group_id}_{member_id}_balance"
+        self._attr_entity_registry_enabled_default = active
 
     @property
     def _group(self) -> SettleUpGroup | None:
@@ -282,7 +286,10 @@ class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
     """
 
     _attr_has_entity_name                 = True
+    _attr_device_class                    = SensorDeviceClass.MONETARY
     _attr_state_class                     = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision     = 2
+    _attr_entity_category                 = EntityCategory.DIAGNOSTIC
     _attr_icon                            = "mdi:cash-clock"
     _attr_entity_registry_enabled_default = False
 
