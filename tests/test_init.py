@@ -1,11 +1,13 @@
 """Tests for SettleUp setup and unload of a config entry."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.settleup import async_remove_config_entry_device
 from custom_components.settleup.api import SettleUpGroup, SettleUpMember
 from custom_components.settleup.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
@@ -110,3 +112,17 @@ async def test_unload_entry(
     await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
+
+
+async def test_remove_device_blocked_while_group_live(hass: HomeAssistant) -> None:
+    """A device whose group still exists upstream cannot be deleted."""
+    entry = SimpleNamespace(runtime_data=SimpleNamespace(data=[build_group()]))
+    device = SimpleNamespace(identifiers={(DOMAIN, "group_test")})
+    assert await async_remove_config_entry_device(hass, entry, device) is False
+
+
+async def test_remove_device_allowed_when_group_stale(hass: HomeAssistant) -> None:
+    """A device whose group no longer exists upstream can be deleted."""
+    entry = SimpleNamespace(runtime_data=SimpleNamespace(data=[build_group()]))
+    device = SimpleNamespace(identifiers={(DOMAIN, "gone_group")})
+    assert await async_remove_config_entry_device(hass, entry, device) is True
