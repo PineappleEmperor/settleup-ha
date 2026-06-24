@@ -10,6 +10,10 @@ import aiohttp
 from .const import FIREBASE_AUTH_URL, FIREBASE_REFRESH_URL, LIVE_DB, SANDBOX_DB
 
 
+class SettleUpAuthError(RuntimeError):
+    """Firebase refresh token is invalid or revoked — credentials must be updated."""
+
+
 @dataclass
 class SettleUpDebt:
     """A single debt between two members within a Settle Up group."""
@@ -184,7 +188,7 @@ class SettleUpAPI:
         async with self._session.post(url, data=payload) as resp:
             data: dict[str, Any] = await resp.json()
         if "error" in data:
-            raise RuntimeError(f"Settle Up token refresh failed: {data['error']}")
+            raise SettleUpAuthError(f"Settle Up token refresh failed: {data['error']}")
         self.id_token      = data["id_token"]
         self.refresh_token = data["refresh_token"]
         self.user_id       = data["user_id"]

@@ -1,47 +1,177 @@
-"""Test sensor for simple integration."""
+"""Tests for the SettleUp DataUpdateCoordinator."""
+from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock
-from pathlib import Path
-import json
-from datetime import datetime
-from custom_components.settleup.coordinator import SettleUpUpdateCoordinator
+from unittest.mock import AsyncMock, patch
 
-from homeassistant.setup import async_setup_component
-from custom_components.settleup.const import DOMAIN
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.settleup.api import (
+    SettleUpAuthError,
+    SettleUpGroup,
+    SettleUpMember,
+)
+from custom_components.settleup.coordinator import OPT_KNOWN_GROUPS, SettleUpCoordinator
+from homeassistant.core import HomeAssistant
+
+MOCK_USER_GROUPS = {
+    "group_abc": {"memberId": "member_alice", "order": 0},
+}
 
 
-async def test_async_setup(hass):
-    """Test the component gets setup."""
-    assert await async_setup_component(hass, DOMAIN, {}) is True
+def build_group(
+    group_id    : str             = "group_test",
+    main_member : str             = "member_alice",
+    currency    : str             = "GBP",
+    debts       : list | None     = None,
+    members     : list | None     = None,
+    transactions: list | None     = None,
+) -> SettleUpGroup:
+    if members is None:
+        members = [
+            SettleUpMember(group_id, "member_alice", True, "1", "Alice", 0.0),
+            SettleUpMember(group_id, "member_bob",   True, "1", "Bob",   0.0),
+        ]
+    debts = debts or []
+    for m in members:
+        m.assign_debts(debts)
+    return SettleUpGroup(
+        group_id              = group_id,
+        main_member_id        = main_member,
+        name                  = "Test Group",
+        converted_to_currency = currency,
+        invite_link           = None,
+        invite_link_active    = False,
+        invite_link_hash      = None,
+        last_changed          = 1700000000,
+        minimize_debts        = False,
+        owner_color           = "#4CAF50",
+        members               = members,
+        debts                 = debts,
+        recent_transactions   = transactions or [],
+    )
+
+_PATCH_API   = "custom_components.settleup.coordinator.SettleUpAPI"
+_PATCH_GROUP = "custom_components.settleup.coordinator.SettleUpGroup"
 
 
-# @pytest.mark.asyncio
-# async def test_settleup_update_coordinator(hass, aioclient_mock):
-#     """Test the SettleUpUpdateCoordinator with mocked API responses."""
-#     fixtures_path = Path(__file__).parent / "fixtures"
-#     with open(fixtures_path / "none.json") as file:
-#         data = json.load(file)    
-#     # Mock the API endpoint for a successful response
-#     mock_api_url = ""
-#     aioclient_mock.get(
-#         mock_api_url,
-#         json=data,
-#         status=200,
-#     )
+def _make_coordinator(hass: HomeAssistant, entry: MockConfigEntry) -> SettleUpCoordinator:
+    with patch(_PATCH_API):
+        return SettleUpCoordinator(hass, entry)
 
-#     # Mock ConfigEntry
-#     mock_entry = AsyncMock()
-#     mock_entry.data = {"api_key": "test_api_key"}
 
-#     # Initialize the coordinator
-#     coordinator = SettleUpUpdateCoordinator(hass, mock_entry)
-#     coordinator.api_key = "test_api_key"  # Ensure the API key is set
-#     coordinator.session = hass.helpers.aiohttp_client.async_get_clientsession(hass)
+# ---------------------------------------------------------------------------
+# Successful update
+# ---------------------------------------------------------------------------
 
-#     # Perform the update
-#     await coordinator.async_refresh()
+async def test_update_returns_groups(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
 
-#     # Assert the data was fetched correctly
-#     assert coordinator.last_update_success
-#     assert coordinator.data[""] == data[""] #
+    group = build_group()
+    coord.api.get_user_groups = AsyncMock(return_value=MOCK_USER_GROUPS)
+
+    with patch(_PATCH_GROUP + ".from_api", new=AsyncMock(return_value=group)):
+        await coord.async_refresh()
+
+    assert coord.last_update_success is True
+    assert len(coord.data) == 1
+    assert coord.data[0].name == "Test Group"
+
+
+async def test_update_persists_known_entities(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """After a successful update, group/member metadata is cached in entry.options."""
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
+
+    group = build_group()
+    coord.api.get_user_groups = AsyncMock(return_value=MOCK_USER_GROUPS)
+
+    with patch(_PATCH_GROUP + ".from_api", new=AsyncMock(return_value=group)):
+        await coord.async_refresh()
+
+    known = mock_config_entry.options.get(OPT_KNOWN_GROUPS, {})
+    assert "group_test" in known
+    assert known["group_test"]["name"]                 == "Test Group"
+    assert known["group_test"]["currency"]             == "GBP"
+    assert "member_alice" in known["group_test"]["members"]
+    assert "member_bob"   in known["group_test"]["members"]
+
+
+async def test_persist_skipped_when_unchanged(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """_persist_known_entities should not call async_update_entry if nothing changed."""
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
+
+    group = build_group()
+    coord.api.get_user_groups = AsyncMock(return_value=MOCK_USER_GROUPS)
+
+    with patch(_PATCH_GROUP + ".from_api", new=AsyncMock(return_value=group)):
+        await coord.async_refresh()  # first refresh — writes options
+        first_options = dict(mock_config_entry.options)
+
+        await coord.async_refresh()  # second refresh — same data, no write needed
+        second_options = dict(mock_config_entry.options)
+
+    assert first_options == second_options
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+async def test_runtime_error_raises_update_failed(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
+    coord.api.get_user_groups = AsyncMock(side_effect=RuntimeError("auth failed"))
+
+    await coord.async_refresh()
+
+    assert coord.last_update_success is False
+
+
+async def test_unexpected_exception_raises_update_failed(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
+    coord.api.get_user_groups = AsyncMock(side_effect=ConnectionError("network down"))
+
+    await coord.async_refresh()
+
+    assert coord.last_update_success is False
+
+
+async def test_auth_error_triggers_reauth(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """SettleUpAuthError should fire async_start_reauth, not just UpdateFailed."""
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
+    coord.api.get_user_groups = AsyncMock(side_effect=SettleUpAuthError("token revoked"))
+
+    with patch.object(mock_config_entry, "async_start_reauth") as mock_reauth:
+        await coord.async_refresh()
+
+    assert coord.last_update_success is False
+    mock_reauth.assert_called_once_with(hass)
+
+
+async def test_empty_groups_returns_empty_list(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, mock_config_entry)
+    coord.api.get_user_groups = AsyncMock(return_value={})
+
+    await coord.async_refresh()
+
+    assert coord.last_update_success is True
+    assert coord.data == []

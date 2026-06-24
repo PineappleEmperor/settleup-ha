@@ -3,16 +3,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from itertools import combinations
-import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
-    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,7 +21,7 @@ from .api import SettleUpGroup, SettleUpMember
 from .const import DOMAIN
 from .coordinator import SettleUpCoordinator
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -53,7 +52,7 @@ async def async_setup_entry(
                 mid = member.member_id
                 if mid not in known_member_ids.get(gid, set()):
                     known_member_ids.setdefault(gid, set()).add(mid)
-                    new_entities.append(SettleUpMemberSensor(coordinator, gid, mid))
+                    new_entities.append(SettleUpMemberSensor(coordinator, gid, mid, member.active))
 
             # Pre-create all canonical pairs sorted by member name so sensors
             # never flip direction or go unavailable when debts are settled/reversed.
@@ -82,7 +81,7 @@ def _group_device(group_id: str, group: SettleUpGroup | None, cached_name: str =
     friendly = (group.name if group else None) or cached_name
     return DeviceInfo(
         identifiers  = {(DOMAIN, group_id)},
-        name         = f"SettleUp {friendly}",
+        name         = f"Settle Up {friendly}",
         manufacturer = "Settle Up",
         model        = "Group",
     )
@@ -93,17 +92,18 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
     """Timestamp of the last group transaction, with debts and members in attributes."""
 
     _attr_has_entity_name = True
-    _attr_device_class    = SensorDeviceClass.TIMESTAMP
-    _attr_icon            = "mdi:receipt-text-clock"
+    _attr_device_class     = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key  = "last_transaction"
 
     def __init__(self, coordinator: SettleUpCoordinator, group_id: str, cached_name: str = "") -> None:
+        """Initialise the group last-transaction sensor."""
         super().__init__(coordinator)
         self._group_id       = group_id
         self._cached_name    = cached_name
         self._attr_unique_id = f"{DOMAIN}_{group_id}_last_transaction"
-        self._attr_name      = "Last Transaction"
 
     async def async_added_to_hass(self) -> None:
+        """Restore the last known value when no live data is available yet."""
         await super().async_added_to_hass()
         if self.coordinator.data is None:
             last = await self.async_get_last_sensor_data()
@@ -120,6 +120,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 
     @property
     def available(self) -> bool:
+        """Return True while the group exists or a restored value is held."""
         return self._group is not None or self._attr_native_value is not None
 
     @property
@@ -140,6 +141,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return group currency, members, debts and recent transactions."""
         group = self._group
         if group is None:
             return {}
@@ -183,22 +185,24 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
 class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
     """A specific member's net balance within a group."""
 
-    _attr_has_entity_name = True
-    _attr_device_class    = SensorDeviceClass.MONETARY
-    _attr_state_class     = SensorStateClass.MEASUREMENT
-    _attr_icon            = "mdi:account-cash"
+    _attr_has_entity_name               = True
+    _attr_device_class                  = SensorDeviceClass.MONETARY
+    _attr_suggested_display_precision   = 2
+    _attr_translation_key               = "member_balance"
 
     def __init__(
         self,
         coordinator: SettleUpCoordinator,
         group_id: str,
         member_id: str,
+        active: bool = True,
     ) -> None:
         """Initialise the sensor."""
         super().__init__(coordinator)
-        self._group_id       = group_id
-        self._member_id      = member_id
-        self._attr_unique_id = f"{DOMAIN}_{group_id}_{member_id}_balance"
+        self._group_id                          = group_id
+        self._member_id                         = member_id
+        self._attr_unique_id                    = f"{DOMAIN}_{group_id}_{member_id}_balance"
+        self._attr_entity_registry_enabled_default = active
 
     @property
     def _group(self) -> SettleUpGroup | None:
@@ -248,6 +252,7 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return this member's individual debts (owes / owed_by)."""
         group  = self._group
         member = self._member
         if not group or not member:
@@ -282,8 +287,10 @@ class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
     """
 
     _attr_has_entity_name                 = True
-    _attr_state_class                     = SensorStateClass.MEASUREMENT
-    _attr_icon                            = "mdi:cash-clock"
+    _attr_device_class                    = SensorDeviceClass.MONETARY
+    _attr_suggested_display_precision     = 2
+    _attr_entity_category                 = EntityCategory.DIAGNOSTIC
+    _attr_translation_key                 = "pair_debt"
     _attr_entity_registry_enabled_default = False
 
     def __init__(
@@ -352,6 +359,7 @@ class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return debtor, creditor and amount for this member pair."""
         value  = self.native_value
         first  = self._member_name(self._first_id)
         second = self._member_name(self._second_id)

@@ -1,200 +1,89 @@
-name: Check Manifest Version Bump
+name: Check Manifest Version
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches-ignore:
+      - main
 
 permissions:
   contents: read
-  pull-requests: write  # Required to comment on PRs
+  pull-requests: write
 
 jobs:
-  check_version_bump:
-    name: Ensure version is updated in manifest.json
+  check_version:
+    name: Manifest version bumped vs last release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Get base branch
-        run: echo "BASE_REF=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
-
-      - name: Checkout base manifest.json
+      - name: Resolve manifest path and PR version
+        id: manifest
         run: |
-          git fetch origin $BASE_REF
-          git show origin/$BASE_REF:custom_components/settleup/manifest.json > ../manifest_base.json
+          MANIFEST=$(ls custom_components/*/manifest.json | head -1)
+          echo "path=$MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "pr_version=$(jq -r '.version' "$MANIFEST")" >> "$GITHUB_OUTPUT"
 
-      - name: Compare manifest versions
+      - name: Resolve last published release version
+        id: base
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          BASE="${TAG#v}"; [ -z "$BASE" ] && BASE="0.0.0"
+          echo "base_version=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Compare
         id: compare
         run: |
-          BASE_VERSION=$(jq -r '.version' ../manifest_base.json)
-          PR_VERSION=$(jq -r '.version' custom_components/settleup/manifest.json)
+          BASE="${{ steps.base.outputs.base_version }}"
+          PR="${{ steps.manifest.outputs.pr_version }}"
+          echo "Last release: $BASE   manifest: $PR"
+          if [ "$BASE" = "$PR" ]; then echo "unchanged=true" >> "$GITHUB_OUTPUT"; else echo "unchanged=false" >> "$GITHUB_OUTPUT"; fi
 
-          echo "Base version: $BASE_VERSION"
-          echo "PR version: $PR_VERSION"
-
-          if [ "$BASE_VERSION" == "$CURRENT_VERSION" ]; then
-            echo "unchanged=true" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "unchanged=false" >> $GITHUB_OUTPUT
-          fi
-          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
-          echo "pr_version=$PR_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Determine bump type from PR labels
+      - name: Determine bump from PR labels
         id: bump
+        if: github.event_name == 'pull_request'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LABELS=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '.labels[].name')
-
-          BASE_VERSION="${{ steps.compare.outputs.base_version }}"
-          echo "Base version: $BASE_VERSION"
-      
-          # Use regex to extract semver parts safely
-          if [[ "$BASE_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="${BASH_REMATCH[3]}"
+          BASE="${{ steps.base.outputs.base_version }}"
+          PR="${{ steps.manifest.outputs.pr_version }}"
+          # de-anchored parse: a base carrying rcN still yields X.Y.Z
+          if [[ "$BASE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
           else
-            echo "❌ Could not parse version number: $BASE_VERSION"
-            exit 1
+            echo "❌ Cannot parse base version: $BASE"; exit 1
           fi
-
-          BUMP=""
-
-          if echo "$LABELS" | grep -qi '!feat'; then
-            BUMP="xfeature"
-          elif echo "$LABELS" | grep -qi '!feature'; then
-            BUMP="xfeature"
-          elif echo "$LABELS" | grep -qi 'xfeat'; then
-            BUMP="xfeature"
-          elif echo "$LABELS" | grep -qi 'xfeature'; then
-            BUMP="xfeature"
-          elif echo "$LABELS" | grep -qi 'feat'; then
-            BUMP="feature"
-          elif echo "$LABELS" | grep -qi 'feature'; then
-            BUMP="feature"
-          elif echo "$LABELS" | grep -qi 'fix'; then
-            BUMP="fix"
-          elif echo "$LABELS" | grep -qi 'patch'; then
-            BUMP="patch"
-          elif echo "$LABELS" | grep -qi 'fix'; then
-            BUMP="patch"
-          elif echo "$LABELS" | grep -qi 'chore'; then
-            BUMP="patch"
+          # prerelease PR version only needs to differ from base -> skip the bump suggestion
+          if [[ "$PR" =~ (rc|alpha|beta|a|b|dev)[0-9]*$ ]]; then
+            echo "pr_is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
-            BUMP="none"
+            echo "pr_is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-
-          if [ "$BUMP" = "xfeature" ]; then
-            EXPECTED_VERSION="v$((MAJOR+1)).0.0"
-          elif [ "$BUMP" = "feature" ]; then
-            EXPECTED_VERSION="v$MAJOR.$((MINOR+1)).0"
-          elif [ "$BUMP" = "fix" ]; then
-            EXPECTED_VERSION="v$MAJOR.$MINOR.$((PATCH+1))"
-          elif [ "$BUMP" = "patch" ]; then
-            EXPECTED_VERSION="v$MAJOR.$MINOR.$((PATCH+1))"
-          else
-            EXPECTED_VERSION=""
+          if   echo "$LABELS" | grep -qiE 'xfeat|xfeature|major'; then BUMP=xfeature; EXPECTED="v$((MAJOR+1)).0.0"
+          elif echo "$LABELS" | grep -qiE 'feat|feature';         then BUMP=feature;  EXPECTED="v$MAJOR.$((MINOR+1)).0"
+          elif echo "$LABELS" | grep -qiE 'fix|patch|chore';      then BUMP=fix;      EXPECTED="v$MAJOR.$MINOR.$((PATCH+1))"
+          else BUMP=none; EXPECTED=""
           fi
+          echo "recommended=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "suggested=$EXPECTED" >> "$GITHUB_OUTPUT"
 
-          echo "RECOMMENDED_BUMP=$BUMP" >> $GITHUB_OUTPUT
-          echo "SUGGESTED_VERSION=$EXPECTED_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Comment on PR if version unchanged
-        if: steps.compare.outputs.unchanged == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Failing steps skip dependabot[bot] (it never bumps the manifest; a no-bump PR
+      # right after a release equals the released version and would trip "unchanged").
+      # Skip the STEP, not the job — a skipped job can read as a missing required check.
+      - name: Fail if version unchanged vs last release
+        if: github.event_name == 'pull_request' && steps.compare.outputs.unchanged == 'true' && github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
-          BUMP_TYPE="${{ steps.bump.outputs.RECOMMENDED_BUMP }}"
-          NEW_VERSION="${{ steps.bump.outputs.SUGGESTED_VERSION }}"
-          MSG="<!-- version-check -->"
-          MSG+="⚠️ **Version in \`custom_components/settleup/manifest.json\` has not been updated.**"
-
-          Please update the \`version\` field according to [Semantic Versioning](https://semver.org/)."
-
-          if [ "$BUMP_TYPE" != "none" ]; then
-            MSG+="
-            
-            🔍 Based on the PR labels, a **$BUMP_TYPE** version bump is recommended."
-            MSG+="
-            
-            💡 Suggested new version: \`$NEW_VERSION\`"
-          else
-            MSG+="
-            
-            💡 No \`breaking feature\`, \`feature\`, or \`fix\` label was found — please add one to indicate the type of change."
-          fi
-
-          # Find comment by this bot with the version-check marker
-          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-            --jq '.[] | select(.body | contains("<!-- version-check -->")) | select(.user.type == "Bot") | .id')
-      
-          if [ -n "$COMMENT_ID" ]; then
-            echo "📝 Updating existing comment ID $COMMENT_ID"
-            gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              /repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
-              -f body="$MSG"
-          else
-            echo "💬 Creating new comment"
-            gh pr comment ${{ github.event.pull_request.number }} --body "$MSG"
-          fi
-    
-          # Fail the job
-          echo "❌ Version mismatch - failing the workflow"
+          echo "❌ manifest version (${{ steps.manifest.outputs.pr_version }}) == last release; bump it (suggested ${{ steps.bump.outputs.suggested }})."
           exit 1
 
-      - name: Comment if version number is incorrect
-        if: steps.bump.outputs.suggested_version != format('v{0}', steps.compare.outputs.pr_version)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fail if version incorrect for label
+        if: github.event_name == 'pull_request' && steps.bump.outputs.pr_is_prerelease != 'true' && steps.bump.outputs.recommended != 'none' && steps.bump.outputs.suggested != format('v{0}', steps.manifest.outputs.pr_version) && github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
-          BUMP_TYPE="${{ steps.bump.outputs.RECOMMENDED_BUMP }}"
-          NEW_VERSION="${{ steps.bump.outputs.SUGGESTED_VERSION }}"
-          PR_VERSION="${{ steps.compare.outputs.PR_VERSION }}"
-          MSG="<!-- version-check -->"
-          MSG+="
-          ⚠️ **Version in \`custom_components/settleup/manifest.json\` seems incorrect.**
-
-          Please update the \`version\` field according to [Semantic Versioning](https://semver.org/)."
-
-          if [ "$BUMP_TYPE" != "none" ]; then
-            MSG+="
-            
-            🔍 Based on the PR labels, a **$BUMP_TYPE** version bump is recommended."
-            MSG+="
-            
-            💡 Suggested new version: \`$NEW_VERSION\`"
-          else
-            MSG+="
-            
-            💡 No \`breaking feature\`, \`feature\`, or \`fix\` label was found — please add one to indicate the type of change."
-          fi
-
-          # Find comment by this bot with the version-check marker
-          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-            --jq '.[] | select(.body | contains("<!-- version-check -->")) | select(.user.type == "Bot") | .id')
-      
-          if [ -n "$COMMENT_ID" ]; then
-            echo "📝 Updating existing comment ID $COMMENT_ID"
-            gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              /repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
-              -f body="$MSG"
-          else
-            echo "💬 Creating new comment"
-            gh pr comment ${{ github.event.pull_request.number }} --body "$MSG"
-          fi
-          
-          # Fail the job
-          echo "❌ Version mismatch - failing the workflow"
-          echo "pr_version=v$PR_VERSION"
-          echo "suggested_version=$NEW_VERSION"
+          echo "❌ label implies ${{ steps.bump.outputs.recommended }} -> expected ${{ steps.bump.outputs.suggested }}, got v${{ steps.manifest.outputs.pr_version }}."
           exit 1

@@ -1,36 +1,31 @@
-name: Release
+name: Semantic Release
+
 on:
   push:
-    branches:
-      - master # or main
+    tags:
+      - 'v*.*.*'
 
 permissions:
-  contents: read # for checkout
+  contents: write
 
 jobs:
   release:
-    name: Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # to be able to publish a GitHub release
-      issues: write # to be able to comment on released issues
-      pull-requests: write # to be able to comment on released pull requests
-      id-token: write # to enable use of OIDC for npm provenance
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - id: pre
+        name: Mark prerelease for rc/beta/alpha tags
+        run: |
+          if echo "${GITHUB_REF_NAME}" | grep -Eiq '(rc|alpha|beta|dev|a|b)[0-9]*$'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: softprops/action-gh-release@v3
         with:
-          node-version: "lts/*"
-      - name: Install dependencies
-        run: npm clean-install
-      - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
-        run: npm audit signatures
-      - name: Release
+          generate_release_notes: true
+          prerelease: ${{ steps.pre.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release

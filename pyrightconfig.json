@@ -1,0 +1,9 @@
+{
+  "pythonVersion": "3.14",
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "standard",
+  "reportMissingImports": true,
+  "reportMissingModuleSource": false,
+  "reportIncompatibleVariableOverride": false
+}

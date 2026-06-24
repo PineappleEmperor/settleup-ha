@@ -59,18 +59,28 @@ SETTLE_DEBT_SCHEMA = vol.Schema(
 def _get_coordinator(hass: HomeAssistant) -> SettleUpCoordinator:
     for entry in hass.config_entries.async_entries(DOMAIN):
         return entry.runtime_data
-    raise HomeAssistantError("No Settle Up integration loaded")
+    raise HomeAssistantError(
+        translation_domain=DOMAIN, translation_key="no_integration_loaded"
+    )
 
 
 def _group_id_from_device(hass: HomeAssistant, device_id: str) -> str:
     """Resolve an HA device ID → Firebase group_id via device identifiers."""
     device = dr.async_get(hass).async_get(device_id)
     if device is None:
-        raise HomeAssistantError(f"Device {device_id!r} not found")
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="device_not_found",
+            translation_placeholders={"device": device_id},
+        )
     for domain, identifier in device.identifiers:
         if domain == DOMAIN:
             return identifier
-    raise HomeAssistantError(f"Device {device_id!r} is not a Settle Up group")
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="not_a_group_device",
+        translation_placeholders={"device": device_id},
+    )
 
 
 def _member_id_from_entity(hass: HomeAssistant, entity_id: str, group_id: str) -> str:
@@ -78,13 +88,21 @@ def _member_id_from_entity(hass: HomeAssistant, entity_id: str, group_id: str) -
     registry = er.async_get(hass)
     entry    = registry.async_get(entity_id)
     if not entry or not entry.unique_id:
-        raise HomeAssistantError(f"Unknown entity: {entity_id}")
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_entity",
+            translation_placeholders={"entity": entity_id},
+        )
     uid    = entry.unique_id
     prefix = f"{DOMAIN}_{group_id}_"
     suffix = "_balance"
     if uid.startswith(prefix) and uid.endswith(suffix):
         return uid[len(prefix):-len(suffix)]
-    raise HomeAssistantError(f"{entity_id} is not a Settle Up member sensor for group {group_id}")
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="not_a_member_sensor",
+        translation_placeholders={"entity": entity_id, "group": group_id},
+    )
 
 
 def _group_currency(coordinator: SettleUpCoordinator, group_id: str) -> str:
@@ -109,7 +127,11 @@ def _resolve_float_list(hass: HomeAssistant, value: Any) -> list[float]:
     rendered = _resolve(hass, value)
     if isinstance(rendered, list):
         return [float(v) for v in rendered]
-    raise HomeAssistantError(f"Expected a list of numbers, got: {rendered!r}")
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="expected_number_list",
+        translation_placeholders={"value": repr(rendered)},
+    )
 
 # ---------------------------------------------------------------------------
 
@@ -132,12 +154,20 @@ def async_setup_services(hass: HomeAssistant) -> None:
         category       = str(_resolve(hass, call.data["category"]))
 
         if weights and member_amounts:
-            raise HomeAssistantError("Specify either weights or member_amounts, not both")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="weights_and_amounts"
+            )
 
         if weights:
             if len(weights) != len(for_ids):
                 raise HomeAssistantError(
-                    f"weights has {len(weights)} values but for_members has {len(for_ids)}"
+                    translation_domain=DOMAIN,
+                    translation_key="length_mismatch",
+                    translation_placeholders={
+                        "field": "weights",
+                        "count": str(len(weights)),
+                        "expected": str(len(for_ids)),
+                    },
                 )
             items: list[dict[str, Any]] = [
                 {
@@ -152,7 +182,13 @@ def async_setup_services(hass: HomeAssistant) -> None:
         elif member_amounts:
             if len(member_amounts) != len(for_ids):
                 raise HomeAssistantError(
-                    f"member_amounts has {len(member_amounts)} values but for_members has {len(for_ids)}"
+                    translation_domain=DOMAIN,
+                    translation_key="length_mismatch",
+                    translation_placeholders={
+                        "field": "member_amounts",
+                        "count": str(len(member_amounts)),
+                        "expected": str(len(for_ids)),
+                    },
                 )
             items = [
                 {"amount": str(a), "forWhom": [{"memberId": mid, "weight": "1"}]}
@@ -183,7 +219,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
             key = await coordinator.api.add_transaction(group_id, transaction)
             _LOGGER.debug("Added transaction %s to group %s", key, group_id)
         except RuntimeError as err:
-            raise HomeAssistantError(str(err)) from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
     async def handle_settle_debt(call: ServiceCall) -> None:
         """Record a debt settlement between two members of a Settle Up group."""
@@ -213,7 +253,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
             key = await coordinator.api.add_transaction(group_id, transaction)
             _LOGGER.debug("Recorded settlement %s in group %s", key, group_id)
         except RuntimeError as err:
-            raise HomeAssistantError(str(err)) from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_TRANSACTION, handle_add_transaction, schema=ADD_TRANSACTION_SCHEMA
