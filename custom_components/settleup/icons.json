@@ -1,0 +1,23 @@
+{
+  "entity": {
+    "sensor": {
+      "last_transaction": {
+        "default": "mdi:receipt-text-clock"
+      },
+      "member_balance": {
+        "default": "mdi:account-cash"
+      },
+      "pair_debt": {
+        "default": "mdi:cash-clock"
+      }
+    }
+  },
+  "services": {
+    "add_transaction": {
+      "service": "mdi:cash-plus"
+    },
+    "settle_debt": {
+      "service": "mdi:cash-check"
+    }
+  }
+}

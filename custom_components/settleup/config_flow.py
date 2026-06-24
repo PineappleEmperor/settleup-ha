@@ -83,9 +83,52 @@ class SettleUpConfigFlow(ConfigFlow, domain=DOMAIN):
             errors      = errors,
         )
 
+    async def _async_validate(self, user_input: dict[str, Any]) -> dict[str, str]:
+        """Validate credentials, returning a (possibly empty) errors dict."""
+        errors: dict[str, str] = {}
+        api = SettleUpAPI(
+            api_key  = user_input[CONF_API_KEY],
+            email    = user_input[CONF_EMAIL],
+            password = user_input[CONF_PASSWORD],
+            session  = async_get_clientsession(self.hass),
+        )
+        try:
+            await api.login()
+        except RuntimeError as err:
+            _LOGGER.warning("SettleUp login failed: %s", err)
+            errors["base"] = "invalid_auth"
+        except aiohttp.ClientError:
+            errors["base"] = "cannot_connect"
+        except Exception:
+            _LOGGER.exception("Unexpected exception validating SettleUp credentials")
+            errors["base"] = "unknown"
+        return errors
+
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Begin reauth flow when credentials are rejected."""
         return await self.async_step_reauth_confirm()
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Allow the user to update connection settings."""
+        errors: dict[str, str] = {}
+        reconfigure_entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            errors = await self._async_validate(user_input)
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    reconfigure_entry, data=user_input
+                )
+
+        return self.async_show_form(
+            step_id     = "reconfigure",
+            data_schema = self.add_suggested_values_to_schema(
+                STEP_USER_SCHEMA, reconfigure_entry.data
+            ),
+            errors      = errors,
+        )
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None

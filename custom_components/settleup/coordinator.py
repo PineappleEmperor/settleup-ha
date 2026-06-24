@@ -7,11 +7,18 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import SettleUpAPI, SettleUpAuthError, SettleUpGroup
-from .const import CONF_API_KEY, CONF_EMAIL, DEFAULT_SCAN_INTERVAL, DOMAIN, OPT_SCAN_INTERVAL
+from .const import (
+    CONF_API_KEY,
+    CONF_EMAIL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    OPT_SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,8 +58,7 @@ class SettleUpCoordinator(DataUpdateCoordinator[list[SettleUpGroup]]):
                 group = await SettleUpGroup.from_api(self.api, group_id, member_id)
                 groups.append(group)
         except SettleUpAuthError as err:
-            self.config_entry.async_start_reauth(self.hass)
-            raise UpdateFailed(str(err)) from err
+            raise ConfigEntryAuthFailed(str(err)) from err
         except RuntimeError as err:
             raise UpdateFailed(str(err)) from err
         except Exception as err:
