@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   check_version:
@@ -20,70 +20,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve manifest path and PR version
-        id: manifest
-        run: |
-          MANIFEST=$(ls custom_components/*/manifest.json | head -1)
-          echo "path=$MANIFEST" >> "$GITHUB_OUTPUT"
-          echo "pr_version=$(jq -r '.version' "$MANIFEST")" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve last published release version
-        id: base
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
-          BASE="${TAG#v}"; [ -z "$BASE" ] && BASE="0.0.0"
-          echo "base_version=$BASE" >> "$GITHUB_OUTPUT"
-
-      - name: Compare
-        id: compare
-        run: |
-          BASE="${{ steps.base.outputs.base_version }}"
-          PR="${{ steps.manifest.outputs.pr_version }}"
-          echo "Last release: $BASE   manifest: $PR"
-          if [ "$BASE" = "$PR" ]; then echo "unchanged=true" >> "$GITHUB_OUTPUT"; else echo "unchanged=false" >> "$GITHUB_OUTPUT"; fi
-
-      - name: Determine bump from PR labels
-        id: bump
+      - name: Gather versions and labels
+        id: gather
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          LABELS=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '.labels[].name')
-          BASE="${{ steps.base.outputs.base_version }}"
-          PR="${{ steps.manifest.outputs.pr_version }}"
-          # de-anchored parse: a base carrying rcN still yields X.Y.Z
-          if [[ "$BASE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-            MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
-          else
-            echo "❌ Cannot parse base version: $BASE"; exit 1
-          fi
-          # prerelease PR version only needs to differ from base -> skip the bump suggestion
-          if [[ "$PR" =~ (rc|alpha|beta|a|b|dev)[0-9]*$ ]]; then
-            echo "pr_is_prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "pr_is_prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-          if   echo "$LABELS" | grep -qiE 'xfeat|xfeature|major'; then BUMP=xfeature; EXPECTED="v$((MAJOR+1)).0.0"
-          elif echo "$LABELS" | grep -qiE 'feat|feature';         then BUMP=feature;  EXPECTED="v$MAJOR.$((MINOR+1)).0"
-          elif echo "$LABELS" | grep -qiE 'fix|patch|chore';      then BUMP=fix;      EXPECTED="v$MAJOR.$MINOR.$((PATCH+1))"
-          else BUMP=none; EXPECTED=""
-          fi
-          echo "recommended=$BUMP" >> "$GITHUB_OUTPUT"
-          echo "suggested=$EXPECTED" >> "$GITHUB_OUTPUT"
+          MANIFEST=$(ls custom_components/*/manifest.json | head -1)
+          echo "pr_version=$(jq -r '.version' "$MANIFEST")" >> "$GITHUB_OUTPUT"
+          TAG=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          echo "last_release=${TAG#v}" >> "$GITHUB_OUTPUT"
+          git fetch origin "$BASE_REF" --depth=1 -q || true
+          echo "main_version=$(git show "origin/$BASE_REF:$MANIFEST" 2>/dev/null | jq -r '.version' || echo '')" >> "$GITHUB_OUTPUT"
+          echo "labels=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '[.labels[].name]|join(",")')" >> "$GITHUB_OUTPUT"
 
-      # Failing steps skip dependabot[bot] (it never bumps the manifest; a no-bump PR
-      # right after a release equals the released version and would trip "unchanged").
-      # Skip the STEP, not the job — a skipped job can read as a missing required check.
-      - name: Fail if version unchanged vs last release
-        if: github.event_name == 'pull_request' && steps.compare.outputs.unchanged == 'true' && github.event.pull_request.user.login != 'dependabot[bot]'
+      # All decision logic lives in scripts/manifest_gate.py (unit-tested in
+      # tests/test_manifest_gate.py) so the gate can't silently regress again.
+      - name: Version gate
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
-          echo "❌ manifest version (${{ steps.manifest.outputs.pr_version }}) == last release; bump it (suggested ${{ steps.bump.outputs.suggested }})."
-          exit 1
-
-      - name: Fail if version incorrect for label
-        if: github.event_name == 'pull_request' && steps.bump.outputs.pr_is_prerelease != 'true' && steps.bump.outputs.recommended != 'none' && steps.bump.outputs.suggested != format('v{0}', steps.manifest.outputs.pr_version) && github.event.pull_request.user.login != 'dependabot[bot]'
-        run: |
-          echo "❌ label implies ${{ steps.bump.outputs.recommended }} -> expected ${{ steps.bump.outputs.suggested }}, got v${{ steps.manifest.outputs.pr_version }}."
-          exit 1
+          python3 scripts/manifest_gate.py \
+            --last-release "${{ steps.gather.outputs.last_release }}" \
+            --main-version "${{ steps.gather.outputs.main_version }}" \
+            --pr-version "${{ steps.gather.outputs.pr_version }}" \
+            --labels "${{ steps.gather.outputs.labels }}"
