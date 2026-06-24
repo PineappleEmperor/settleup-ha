@@ -147,6 +147,56 @@ async def test_reauth_invalid_auth_shows_error(hass: HomeAssistant) -> None:
     assert result["errors"] == {"base": "invalid_auth"}
 
 
+async def test_reconfigure_success_updates_entry(hass: HomeAssistant) -> None:
+    with patch(_PATCH_API, return_value=_mock_api()):
+        r1 = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        await hass.config_entries.flow.async_configure(r1["flow_id"], user_input=VALID_INPUT)
+        await hass.async_block_till_done()
+
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    new_input = {**VALID_INPUT, CONF_API_KEY: "rotated_key"}
+
+    with patch(_PATCH_API, return_value=_mock_api()):
+        r2 = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            r2["flow_id"], user_input=new_input
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"]   == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_API_KEY] == "rotated_key"
+
+
+async def test_reconfigure_invalid_auth_shows_error(hass: HomeAssistant) -> None:
+    with patch(_PATCH_API, return_value=_mock_api()):
+        r1 = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        await hass.config_entries.flow.async_configure(r1["flow_id"], user_input=VALID_INPUT)
+        await hass.async_block_till_done()
+
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    with patch(_PATCH_API, return_value=_mock_api(login_side_effect=RuntimeError("INVALID_PASSWORD"))):
+        r2 = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            r2["flow_id"], user_input=VALID_INPUT
+        )
+
+    assert result["type"]   == FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
 async def test_already_configured_aborts(hass: HomeAssistant) -> None:
     """single_config_entry: true means a second init is aborted immediately by HA."""
     with patch(_PATCH_API, return_value=_mock_api()):
