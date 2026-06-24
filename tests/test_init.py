@@ -19,16 +19,20 @@ SERVICE_SETTLE_DEBT = "settle_debt"
 MOCK_USER_GROUPS = {"group_abc": {"memberId": "member_alice", "order": 0}}
 
 
-def build_group() -> SettleUpGroup:
-    """Return a minimal two-member group for setup tests."""
-    members = [
-        SettleUpMember("group_test", "member_alice", True, "1", "Alice", 0.0),
-        SettleUpMember("group_test", "member_bob", True, "1", "Bob", 0.0),
+def build_group(
+    group_id: str = "group_test",
+    name: str = "Test Group",
+    members: list[tuple[str, str]] | None = None,
+) -> SettleUpGroup:
+    """Return a minimal group for setup tests; members are (member_id, display_name)."""
+    members = members or [("member_alice", "Alice"), ("member_bob", "Bob")]
+    member_objs = [
+        SettleUpMember(group_id, mid, True, "1", mname, 0.0) for mid, mname in members
     ]
     return SettleUpGroup(
-        group_id              = "group_test",
-        main_member_id        = "member_alice",
-        name                  = "Test Group",
+        group_id              = group_id,
+        main_member_id        = member_objs[0].member_id,
+        name                  = name,
         converted_to_currency = "GBP",
         invite_link           = None,
         invite_link_active    = False,
@@ -36,7 +40,7 @@ def build_group() -> SettleUpGroup:
         last_changed          = 1700000000,
         minimize_debts        = False,
         owner_color           = "#4CAF50",
-        members               = members,
+        members               = member_objs,
         debts                 = [],
         recent_transactions   = [],
     )
@@ -112,6 +116,25 @@ async def test_unload_entry(
     await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
+
+
+async def test_dynamic_devices_adds_entities_for_new_group(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_api: MagicMock
+) -> None:
+    """A group that appears on a later refresh spawns new entities (dynamic-devices)."""
+    await _setup(hass, mock_config_entry, mock_api)
+    before = len(hass.states.async_all("sensor"))
+
+    coordinator = mock_config_entry.runtime_data
+    coordinator.data = [
+        build_group(),
+        build_group("group_two", "Second", [("member_carol", "Carol"), ("member_dave", "Dave")]),
+    ]
+    coordinator.async_update_listeners()
+    await hass.async_block_till_done()
+
+    assert len(hass.states.async_all("sensor")) > before
+    assert hass.states.get("sensor.settle_up_second_last_transaction") is not None
 
 
 async def test_remove_device_blocked_while_group_live(hass: HomeAssistant) -> None:
