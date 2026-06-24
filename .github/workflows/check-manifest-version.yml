@@ -35,7 +35,7 @@ jobs:
           echo "Base version: $BASE_VERSION"
           echo "PR version: $PR_VERSION"
 
-          if [ "$BASE_VERSION" == "$CURRENT_VERSION" ]; then
+          if [ "$BASE_VERSION" == "$PR_VERSION" ]; then
             echo "unchanged=true" >> $GITHUB_OUTPUT
             exit 1
           else
