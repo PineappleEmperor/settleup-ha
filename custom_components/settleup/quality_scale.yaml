@@ -67,8 +67,4 @@ rules:
   # Platinum
   async-dependency: done
   inject-websession: done
-  strict-typing:
-    status: todo
-    comment: >
-      async-dependency and inject-websession are done; full pyright strict mode
-      plus a py.typed marker are the only remaining work for Platinum.
+  strict-typing: done

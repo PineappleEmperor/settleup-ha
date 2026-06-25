@@ -105,7 +105,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
     async def async_added_to_hass(self) -> None:
         """Restore the last known value when no live data is available yet."""
         await super().async_added_to_hass()
-        if self.coordinator.data is None:
+        if self._group is None:
             last = await self.async_get_last_sensor_data()
             if last is not None:
                 self._attr_native_value = last.native_value
