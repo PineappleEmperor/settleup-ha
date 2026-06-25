@@ -22,4 +22,4 @@ jobs:
           pip install homeassistant
           pip install -r requirements.test.txt
       - name: Pytest
-        run: python -m pytest -p no:randomly -v
+        run: python -m pytest
