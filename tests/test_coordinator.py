@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.settleup.api import (
@@ -12,6 +13,7 @@ from custom_components.settleup.api import (
 )
 from custom_components.settleup.coordinator import OPT_KNOWN_GROUPS, SettleUpCoordinator
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 
 MOCK_USER_GROUPS = {
     "group_abc": {"memberId": "member_alice", "order": 0},
@@ -149,19 +151,23 @@ async def test_unexpected_exception_raises_update_failed(
     assert coord.last_update_success is False
 
 
-async def test_auth_error_triggers_reauth(
+async def test_auth_error_raises_config_entry_auth_failed(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ) -> None:
-    """SettleUpAuthError should fire async_start_reauth, not just UpdateFailed."""
+    """SettleUpAuthError must surface as ConfigEntryAuthFailed so HA starts reauth.
+
+    Asserting our contract (the raised exception) rather than HA's internal
+    async_start_reauth call keeps the test stable across HA versions.
+    """
     mock_config_entry.add_to_hass(hass)
     coord = _make_coordinator(hass, mock_config_entry)
     coord.api.get_user_groups = AsyncMock(side_effect=SettleUpAuthError("token revoked"))
 
-    with patch.object(mock_config_entry, "async_start_reauth") as mock_reauth:
-        await coord.async_refresh()
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coord._async_update_data()
 
+    await coord.async_refresh()
     assert coord.last_update_success is False
-    mock_reauth.assert_called_once_with(hass)
 
 
 async def test_empty_groups_returns_empty_list(

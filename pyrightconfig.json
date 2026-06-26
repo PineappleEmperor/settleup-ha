@@ -2,7 +2,7 @@
   "pythonVersion": "3.14",
   "venvPath": ".",
   "venv": ".venv",
-  "typeCheckingMode": "standard",
+  "typeCheckingMode": "strict",
   "reportMissingImports": true,
   "reportMissingModuleSource": false,
   "reportIncompatibleVariableOverride": false

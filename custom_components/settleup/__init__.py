@@ -1,9 +1,10 @@
 """The Settle Up integration."""
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
+from typing import Any, cast
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -11,16 +12,19 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
-from .coordinator import SettleUpCoordinator
+from .coordinator import SettleUpConfigEntry, SettleUpCoordinator
 from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
-CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
-
-type SettleUpConfigEntry = ConfigEntry[SettleUpCoordinator]
+# cv.empty_config_schema is typed as returning an unparametrised Callable[[dict], dict]
+# in HA's stubs; cast to a parametrised Callable so the module attribute is clean.
+CONFIG_SCHEMA = cast(
+    "Callable[[dict[str, Any]], dict[str, Any]]",
+    cv.empty_config_schema(DOMAIN),  # pyright: ignore[reportUnknownMemberType]
+)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

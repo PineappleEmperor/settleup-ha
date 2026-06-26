@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 import voluptuous as vol
 
@@ -126,7 +126,8 @@ def _resolve_float_list(hass: HomeAssistant, value: Any) -> list[float]:
     """Resolve a value that is either a list of floats or a template rendering one."""
     rendered = _resolve(hass, value)
     if isinstance(rendered, list):
-        return [float(v) for v in rendered]
+        items = cast("list[Any]", rendered)
+        return [float(v) for v in items]
     raise HomeAssistantError(
         translation_domain=DOMAIN,
         translation_key="expected_number_list",

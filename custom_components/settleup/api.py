@@ -44,7 +44,7 @@ class SettleUpMember:
     default_weight : str
     name           : str
     balance        : float
-    debts          : list[SettleUpDebt] = field(default_factory=list)
+    debts          : list[SettleUpDebt] = field(default_factory=list[SettleUpDebt])
 
     @classmethod
     def from_api(cls, group_id: str, member_id: str, data: dict[str, Any]) -> Self:
@@ -79,7 +79,7 @@ class SettleUpGroup:
     owner_color           : str
     members               : list[SettleUpMember]
     debts                 : list[SettleUpDebt]
-    recent_transactions   : list[dict[str, Any]] = field(default_factory=list)
+    recent_transactions   : list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
     @classmethod
     async def from_api(

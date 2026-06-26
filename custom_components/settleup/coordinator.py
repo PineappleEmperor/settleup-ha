@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD
@@ -21,6 +22,8 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+type SettleUpConfigEntry = ConfigEntry[SettleUpCoordinator]
 
 OPT_KNOWN_GROUPS = "known_groups"
 
@@ -70,7 +73,7 @@ class SettleUpCoordinator(DataUpdateCoordinator[list[SettleUpGroup]]):
     def _persist_known_entities(self, groups: list[SettleUpGroup]) -> None:
         """Cache data for startup."""
         assert self.config_entry is not None
-        known: dict[str, dict] = {
+        known: dict[str, dict[str, Any]] = {
             g.group_id: {
                 "name"     : g.name,
                 "currency" : g.converted_to_currency,
