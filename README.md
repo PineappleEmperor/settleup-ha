@@ -9,10 +9,7 @@
 
 # Settle Up Integration for Home Assistant
 
-> [!NOTE]
-> **AI assistance:** I'm a programmer; this project is built with AI (Claude, via Claude Code) for implementation, code review, and QA — under human direction, guided by my [`ha-integration`](https://github.com/PineappleEmperor/pineapple-claude-hacs) skill. Architecture and final review are mine; every change is human-reviewed before it merges.
-
-This is an unofficial Settle Up integration for Home Assistant. This integration allows you to interact with your Settle Up account via the [Settle Up API](https://api.settleup.io/).
+This is an unofficial Settle Up integration for Home Assistant. This integration allows you to interact with your Settle Up account via the [Settle Up API](https://api.settleup.io/). It meets Home Assistant's [**Platinum** quality scale](https://www.home-assistant.io/docs/quality_scale/).
 
 > **Prerequisite** — you need a Settle Up account and a Firebase API key. Request one from tomas (at) stepuplabs.io.
 
@@ -146,8 +143,6 @@ automation:
 
 ## Troubleshooting
 
-- **"Invalid email or password"** on setup — verify the email/password and that the **Firebase API key** is correct. The integration will prompt to re-authenticate if credentials stop working.
-- **Sensors show `unavailable`** — the last poll failed (network or Settle Up outage). The integration retries automatically; check **Settings → System → Logs** for `custom_components.settleup`.
 - **A service call fails** — the error message names the cause (e.g. wrong group device, an entity that is not a member sensor, or mismatched `weights`/`member_amounts` lengths).
 - **New group or member missing** — wait for the next poll; entities for new groups/members are created automatically. Inactive members and pair-debt sensors are **disabled by default** — enable them in the entity settings.
 - For more detail, raise the log level:
@@ -156,6 +151,11 @@ automation:
     logs:
       custom_components.settleup: debug
   ```
+
+## Development
+
+> [!NOTE]
+> **AI assistance:** I'm a programmer; this project is built with AI (Claude, via Claude Code) for implementation, code review, and QA — under human direction, guided by my [`ha-integration`](https://github.com/PineappleEmperor/pineapple-claude-hacs) skill. Architecture and final review are mine; every change is human-reviewed before it merges.
 
 <!-- Badges -->
 
