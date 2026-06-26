@@ -14,7 +14,7 @@ from custom_components.settleup.sensor import (
     SettleUpGroupSensor,
     SettleUpMemberSensor,
 )
-from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import EntityCategory
 
 GROUP_ID = "group_test"
@@ -87,6 +87,19 @@ def test_sensor_device_classes() -> None:
     assert _group_sensor().device_class  == SensorDeviceClass.TIMESTAMP
     assert _member_sensor().device_class == SensorDeviceClass.MONETARY
     assert _debt_sensor().device_class   == SensorDeviceClass.MONETARY
+
+
+# state-class — monetary balances need TOTAL for long-term statistics --------
+# HA permits only {TOTAL} for the MONETARY device class (DEVICE_CLASS_STATE_CLASSES);
+# dropping it breaks statistics, and MEASUREMENT is rejected as "impossible" for monetary.
+
+def test_monetary_sensors_have_total_state_class() -> None:
+    assert _member_sensor().state_class == SensorStateClass.TOTAL
+    assert _debt_sensor().state_class   == SensorStateClass.TOTAL
+
+
+def test_timestamp_sensor_has_no_state_class() -> None:
+    assert _group_sensor().state_class is None
 
 
 # entity-category (Gold) — the pair-debt sensor is diagnostic ----------------

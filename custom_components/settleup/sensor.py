@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -187,6 +188,7 @@ class SettleUpMemberSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity)
 
     _attr_has_entity_name               = True
     _attr_device_class                  = SensorDeviceClass.MONETARY
+    _attr_state_class                   = SensorStateClass.TOTAL
     _attr_suggested_display_precision   = 2
     _attr_translation_key               = "member_balance"
 
@@ -288,6 +290,7 @@ class SettleUpDebtSensor(CoordinatorEntity[SettleUpCoordinator], SensorEntity):
 
     _attr_has_entity_name                 = True
     _attr_device_class                    = SensorDeviceClass.MONETARY
+    _attr_state_class                     = SensorStateClass.TOTAL
     _attr_suggested_display_precision     = 2
     _attr_entity_category                 = EntityCategory.DIAGNOSTIC
     _attr_translation_key                 = "pair_debt"
