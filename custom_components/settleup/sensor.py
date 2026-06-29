@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from itertools import combinations
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -129,7 +129,7 @@ class SettleUpGroupSensor(CoordinatorEntity[SettleUpCoordinator], RestoreSensor)
         """Return datetime of the most recent transaction, or None if none exist."""
         group = self._group
         if group is None:
-            return self._attr_native_value  # type: ignore[return-value]
+            return cast("datetime | None", self._attr_native_value)
         if not group.recent_transactions:
             return None
         ts_ms = group.recent_transactions[0].get("dateTime", 0)
